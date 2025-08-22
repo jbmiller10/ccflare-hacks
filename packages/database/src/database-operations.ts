@@ -7,6 +7,10 @@ import { ensureSchema, runMigrations } from "./migrations";
 import { resolveDbPath } from "./paths";
 import { AccountRepository } from "./repositories/account.repository";
 import { AgentPreferenceRepository } from "./repositories/agent-preference.repository";
+import {
+	type InterceptorConfig,
+	InterceptorRepository,
+} from "./repositories/interceptor.repository";
 import { OAuthRepository } from "./repositories/oauth.repository";
 import {
 	type RequestData,
@@ -34,6 +38,7 @@ export class DatabaseOperations implements StrategyStore, Disposable {
 	private strategy: StrategyRepository;
 	private stats: StatsRepository;
 	private agentPreferences: AgentPreferenceRepository;
+	private interceptor: InterceptorRepository;
 
 	constructor(dbPath?: string) {
 		const resolvedPath = dbPath ?? resolveDbPath();
@@ -59,6 +64,7 @@ export class DatabaseOperations implements StrategyStore, Disposable {
 		this.strategy = new StrategyRepository(this.db);
 		this.stats = new StatsRepository(this.db);
 		this.agentPreferences = new AgentPreferenceRepository(this.db);
+		this.interceptor = new InterceptorRepository(this.db);
 	}
 
 	setRuntimeConfig(runtime: RuntimeConfig): void {
@@ -348,6 +354,21 @@ export class DatabaseOperations implements StrategyStore, Disposable {
 
 	setBulkAgentPreferences(agentIds: string[], model: string): void {
 		this.agentPreferences.setBulkPreferences(agentIds, model);
+	}
+
+	// Interceptor operations delegated to repository
+	getInterceptorConfig(
+		id: string,
+	): { isEnabled: boolean; config: InterceptorConfig } | null {
+		return this.interceptor.getConfig(id);
+	}
+
+	setInterceptorConfig(
+		id: string,
+		isEnabled: boolean,
+		config: InterceptorConfig,
+	): void {
+		this.interceptor.setConfig(id, isEnabled, config);
 	}
 
 	close(): void {
