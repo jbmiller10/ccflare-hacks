@@ -34,6 +34,7 @@ import {
 } from "./handlers/requests";
 import { createRequestsStreamHandler } from "./handlers/requests-stream";
 import { createStatsHandler, createStatsResetHandler } from "./handlers/stats";
+import { createSystemPromptInterceptorHandler } from "./handlers/tools";
 import type { APIContext } from "./types";
 import { errorResponse } from "./utils/http-error";
 
@@ -77,6 +78,7 @@ export class APIRouter {
 		const requestsStreamHandler = createRequestsStreamHandler();
 		const cleanupHandler = createCleanupHandler(dbOps, config);
 		const compactHandler = createCompactHandler(dbOps);
+		const toolsHandler = createSystemPromptInterceptorHandler(dbOps);
 
 		// Register routes
 		this.handlers.set("GET:/health", () => healthHandler());
@@ -148,6 +150,12 @@ export class APIRouter {
 			return bulkHandler(req);
 		});
 		this.handlers.set("GET:/api/workspaces", () => workspacesHandler());
+		this.handlers.set("GET:/api/tools/interceptors/system-prompt", () =>
+			toolsHandler.getSystemPromptConfig(),
+		);
+		this.handlers.set("POST:/api/tools/interceptors/system-prompt", (req) =>
+			toolsHandler.setSystemPromptConfig(req),
+		);
 	}
 
 	/**
