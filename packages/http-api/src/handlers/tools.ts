@@ -37,15 +37,27 @@ export function createSystemPromptInterceptorHandler(
 			try {
 				const body = await req.json();
 
-				// Validate required fields
+				// Validate required fields exist and have correct types
+				if (body.isEnabled === undefined || body.isEnabled === null) {
+					return errorResponse(BadRequest("isEnabled is required"));
+				}
 				if (typeof body.isEnabled !== "boolean") {
 					return errorResponse(BadRequest("isEnabled must be a boolean"));
 				}
 
+				if (body.promptTemplate === undefined || body.promptTemplate === null) {
+					return errorResponse(BadRequest("promptTemplate is required"));
+				}
 				if (typeof body.promptTemplate !== "string") {
 					return errorResponse(BadRequest("promptTemplate must be a string"));
 				}
+				if (body.promptTemplate.trim() === "") {
+					return errorResponse(BadRequest("promptTemplate cannot be empty"));
+				}
 
+				if (body.toolsEnabled === undefined || body.toolsEnabled === null) {
+					return errorResponse(BadRequest("toolsEnabled is required"));
+				}
 				if (typeof body.toolsEnabled !== "boolean") {
 					return errorResponse(BadRequest("toolsEnabled must be a boolean"));
 				}
