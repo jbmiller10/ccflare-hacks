@@ -12,13 +12,16 @@ export interface AgentInterceptResult {
 	agentUsed: string | null;
 	originalModel: string | null;
 	appliedModel: string | null;
+	systemPromptModified?: boolean;
+	toolsRemoved?: boolean;
 }
 
 /**
- * Detects agent usage and modifies the request body to use the preferred model
+ * Detects agent usage, modifies the request body to use the preferred model,
+ * and applies system prompt interception if configured
  * @param requestBodyBuffer - The buffered request body
  * @param dbOps - Database operations instance
- * @returns Modified request body and agent detection information
+ * @returns Modified request body and agent/system prompt modification information
  */
 export async function interceptAndModifyRequest(
 	requestBodyBuffer: ArrayBuffer | null,
@@ -109,7 +112,29 @@ export async function interceptAndModifyRequest(
 		);
 
 		if (!detectedAgent) {
-			// No agent detected
+			// No agent detected, but still apply system prompt interception
+			const systemPromptResult = await applySystemPromptInterception(
+				requestBody,
+				dbOps,
+			);
+
+			// If system prompt was modified, create new buffer
+			if (systemPromptResult.modified || systemPromptResult.toolsRemoved) {
+				const modifiedBodyText = JSON.stringify(requestBody);
+				const encodedData = new TextEncoder().encode(modifiedBodyText);
+				const modifiedBody = new ArrayBuffer(encodedData.byteLength);
+				new Uint8Array(modifiedBody).set(encodedData);
+
+				return {
+					modifiedBody,
+					agentUsed: null,
+					originalModel,
+					appliedModel: originalModel,
+					systemPromptModified: systemPromptResult.modified,
+					toolsRemoved: systemPromptResult.toolsRemoved,
+				};
+			}
+
 			return {
 				modifiedBody: requestBodyBuffer,
 				agentUsed: null,
@@ -126,8 +151,30 @@ export async function interceptAndModifyRequest(
 		const preference = dbOps.getAgentPreference(detectedAgent.id);
 		const preferredModel = preference?.model || detectedAgent.model;
 
-		// If the preferred model is the same as original, no modification needed
+		// If the preferred model is the same as original, still check system prompt interception
 		if (preferredModel === originalModel) {
+			const systemPromptResult = await applySystemPromptInterception(
+				requestBody,
+				dbOps,
+			);
+
+			// If system prompt was modified, create new buffer
+			if (systemPromptResult.modified || systemPromptResult.toolsRemoved) {
+				const modifiedBodyText = JSON.stringify(requestBody);
+				const encodedData = new TextEncoder().encode(modifiedBodyText);
+				const modifiedBody = new ArrayBuffer(encodedData.byteLength);
+				new Uint8Array(modifiedBody).set(encodedData);
+
+				return {
+					modifiedBody,
+					agentUsed: detectedAgent.id,
+					originalModel,
+					appliedModel: originalModel,
+					systemPromptModified: systemPromptResult.modified,
+					toolsRemoved: systemPromptResult.toolsRemoved,
+				};
+			}
+
 			return {
 				modifiedBody: requestBodyBuffer,
 				agentUsed: detectedAgent.id,
@@ -139,6 +186,12 @@ export async function interceptAndModifyRequest(
 		// Modify the request body with the preferred model
 		log.info(`Modifying model from ${originalModel} to ${preferredModel}`);
 		requestBody.model = preferredModel;
+
+		// Apply system prompt interception
+		const systemPromptResult = await applySystemPromptInterception(
+			requestBody,
+			dbOps,
+		);
 
 		// Convert back to buffer
 		const modifiedBodyText = JSON.stringify(requestBody);
@@ -152,6 +205,8 @@ export async function interceptAndModifyRequest(
 			agentUsed: detectedAgent.id,
 			originalModel,
 			appliedModel: preferredModel,
+			systemPromptModified: systemPromptResult.modified,
+			toolsRemoved: systemPromptResult.toolsRemoved,
 		};
 	} catch (error) {
 		log.error("Failed to intercept/modify request:", error);
@@ -187,6 +242,7 @@ interface RequestBody {
 	messages?: Message[];
 	model?: string;
 	system?: string | SystemMessage[];
+	tools?: unknown;
 }
 
 /**
@@ -367,4 +423,106 @@ function extractAgentDirectories(systemPrompt: string): string[] {
 	}
 
 	return Array.from(directories);
+}
+
+/**
+ * Applies system prompt interception if configured
+ * @param requestBody - The parsed request body
+ * @param dbOps - Database operations instance
+ * @returns Object indicating if modifications were made
+ */
+async function applySystemPromptInterception(
+	requestBody: RequestBody,
+	dbOps: DatabaseOperations,
+): Promise<{ modified: boolean; toolsRemoved: boolean }> {
+	const interceptLog = new Logger("SystemPromptInterceptor");
+
+	try {
+		// Fetch interceptor configuration
+		const interceptorConfig = dbOps.getInterceptorConfig("system_prompt");
+
+		// If not enabled or config missing, return unchanged
+		if (!interceptorConfig || !interceptorConfig.isEnabled) {
+			interceptLog.info("System prompt interceptor is not enabled");
+			return { modified: false, toolsRemoved: false };
+		}
+
+		interceptLog.info("System prompt interceptor is enabled");
+
+		// Check if this is a main agent request
+		if (!Array.isArray(requestBody.system)) {
+			interceptLog.info("System field is not an array, skipping interception");
+			return { modified: false, toolsRemoved: false };
+		}
+
+		// Check first system message for main agent identification
+		const firstSystemText = requestBody.system[0]?.text;
+		if (!firstSystemText) {
+			interceptLog.info(
+				"No text in first system message, skipping interception",
+			);
+			return { modified: false, toolsRemoved: false };
+		}
+
+		// Check if it's the main Claude Code agent (not a subagent)
+		const isMainAgent = firstSystemText.includes(
+			"You are Claude Code, Anthropic's official CLI for Claude.",
+		);
+		const isSubAgent = firstSystemText.includes(
+			"You are an agent for Claude Code",
+		);
+
+		if (!isMainAgent || isSubAgent) {
+			interceptLog.info(
+				`Not a main agent request (isMainAgent: ${isMainAgent}, isSubAgent: ${isSubAgent}), skipping interception`,
+			);
+			return { modified: false, toolsRemoved: false };
+		}
+
+		interceptLog.info(
+			"Detected main agent request, applying system prompt interception",
+		);
+
+		// Extract the second system message (contains env block and other dynamic content)
+		const secondSystemMessage = requestBody.system[1];
+		if (!secondSystemMessage || !secondSystemMessage.text) {
+			interceptLog.info(
+				"No second system message found, skipping interception",
+			);
+			return { modified: false, toolsRemoved: false };
+		}
+
+		// Extract the <env> block from the original system prompt
+		const envBlockRegex = /<env>([\s\S]*?)<\/env>/;
+		const envMatch = secondSystemMessage.text.match(envBlockRegex);
+		const envBlock = envMatch ? envMatch[0] : "";
+
+		interceptLog.info(
+			`Extracted env block (${envBlock.length} chars): ${envBlock.substring(0, 100)}...`,
+		);
+
+		// Apply the template
+		const { promptTemplate, toolsEnabled } = interceptorConfig.config;
+		const newPrompt = promptTemplate.replace("{{env_block}}", envBlock);
+
+		// Update the second system message
+		secondSystemMessage.text = newPrompt;
+
+		interceptLog.info(
+			`Applied prompt template, new prompt length: ${newPrompt.length} chars`,
+		);
+
+		// Handle tools toggle
+		let toolsRemoved = false;
+		if (!toolsEnabled && requestBody.tools !== undefined) {
+			delete requestBody.tools;
+			toolsRemoved = true;
+			interceptLog.info("Removed tools from request as per configuration");
+		}
+
+		return { modified: true, toolsRemoved };
+	} catch (error) {
+		interceptLog.error("Failed to apply system prompt interception:", error);
+		return { modified: false, toolsRemoved: false };
+	}
 }
