@@ -90,6 +90,15 @@ export function ensureSchema(db: Database): void {
 			updated_at INTEGER NOT NULL
 		)
 	`);
+
+	// Create interceptors table for storing tool configurations
+	db.run(`
+		CREATE TABLE IF NOT EXISTS interceptors (
+			id TEXT PRIMARY KEY,
+			is_enabled INTEGER NOT NULL DEFAULT 0,
+			config TEXT NOT NULL
+		)
+	`);
 }
 
 export function runMigrations(db: Database): void {
