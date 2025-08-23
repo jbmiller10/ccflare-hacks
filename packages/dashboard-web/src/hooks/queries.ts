@@ -214,16 +214,25 @@ export const useCompactDb = () => {
 	});
 };
 
-// System prompt interceptor hooks
+/**
+ * Hook to fetch the current system prompt interceptor configuration
+ * Polls for changes at a slow interval and continues in background
+ */
 export const useSystemPromptOverride = () => {
 	return useQuery({
 		queryKey: queryKeys.systemPromptOverride(),
 		queryFn: () => api.getSystemPromptOverride(),
 		refetchInterval: REFRESH_INTERVALS.slow, // Poll for config changes
 		refetchIntervalInBackground: true, // Continue polling when tab is not focused
+		retry: 3, // Retry failed requests up to 3 times
+		retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 30000), // Exponential backoff with max 30s
 	});
 };
 
+/**
+ * Hook to update the system prompt interceptor configuration
+ * Automatically invalidates the configuration cache on success
+ */
 export const useSetSystemPromptOverride = () => {
 	const queryClient = useQueryClient();
 	return useMutation({
@@ -234,5 +243,7 @@ export const useSetSystemPromptOverride = () => {
 				queryKey: queryKeys.systemPromptOverride(),
 			});
 		},
+		retry: 2, // Retry failed mutations up to 2 times
+		retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 10000), // Exponential backoff with max 10s
 	});
 };
