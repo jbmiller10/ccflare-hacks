@@ -73,9 +73,6 @@ export function createSystemPromptInterceptorHandler(
 						BadRequest("replacementPrompt must be a string"),
 					);
 				}
-				if (body.replacementPrompt.trim() === "") {
-					return errorResponse(BadRequest("replacementPrompt cannot be empty"));
-				}
 
 				if (body.toolsEnabled === undefined || body.toolsEnabled === null) {
 					return errorResponse(BadRequest("toolsEnabled is required"));
