@@ -156,6 +156,9 @@ export class APIRouter {
 		this.handlers.set("POST:/api/tools/interceptors/system-prompt", (req) =>
 			toolsHandler.setSystemPromptConfig(req),
 		);
+		this.handlers.set("DELETE:/api/tools/interceptors/system-prompt", () =>
+			toolsHandler.resetSystemPromptConfig(),
+		);
 	}
 
 	/**
