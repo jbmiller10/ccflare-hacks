@@ -34,6 +34,13 @@ export interface AgentsResponse {
 	workspaces: AgentWorkspace[];
 }
 
+// System prompt interceptor configuration interface
+export interface SystemPromptConfig {
+	isEnabled: boolean;
+	promptTemplate: string;
+	toolsEnabled: boolean;
+}
+
 class API extends HttpClient {
 	constructor() {
 		super({
@@ -326,6 +333,24 @@ class API extends HttpClient {
 
 	async compactDb(): Promise<{ ok: boolean }> {
 		return this.post<{ ok: boolean }>("/api/maintenance/compact");
+	}
+
+	// System prompt interceptor methods
+	async getSystemPromptOverride(): Promise<SystemPromptConfig> {
+		return this.get<SystemPromptConfig>(
+			"/api/tools/interceptors/system-prompt",
+		);
+	}
+
+	async setSystemPromptOverride(config: SystemPromptConfig): Promise<void> {
+		try {
+			await this.post("/api/tools/interceptors/system-prompt", config);
+		} catch (error) {
+			if (error instanceof HttpError) {
+				throw new Error(error.message);
+			}
+			throw error;
+		}
 	}
 }
 
