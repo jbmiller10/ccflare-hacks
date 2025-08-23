@@ -1,5 +1,6 @@
 import type { AgentUpdatePayload } from "@ccflare/types";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import type { SystemPromptConfig } from "../api";
 import { api } from "../api";
 import { REFRESH_INTERVALS } from "../constants";
 import { queryKeys } from "../lib/query-keys";
@@ -210,5 +211,28 @@ export const useCleanupNow = () => {
 export const useCompactDb = () => {
 	return useMutation({
 		mutationFn: () => api.compactDb(),
+	});
+};
+
+// System prompt interceptor hooks
+export const useSystemPromptOverride = () => {
+	return useQuery({
+		queryKey: queryKeys.systemPromptOverride(),
+		queryFn: () => api.getSystemPromptOverride(),
+		refetchInterval: REFRESH_INTERVALS.slow, // Poll for config changes
+		refetchIntervalInBackground: true, // Continue polling when tab is not focused
+	});
+};
+
+export const useSetSystemPromptOverride = () => {
+	const queryClient = useQueryClient();
+	return useMutation({
+		mutationFn: (config: SystemPromptConfig) =>
+			api.setSystemPromptOverride(config),
+		onSuccess: () => {
+			queryClient.invalidateQueries({
+				queryKey: queryKeys.systemPromptOverride(),
+			});
+		},
 	});
 };
