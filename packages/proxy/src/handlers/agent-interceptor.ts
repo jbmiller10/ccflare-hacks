@@ -113,7 +113,7 @@ export async function interceptAndModifyRequest(
 
 		if (!detectedAgent) {
 			// No agent detected, but still apply system prompt interception
-			const systemPromptResult = await applySystemPromptInterception(
+			const systemPromptResult = applySystemPromptInterception(
 				requestBody,
 				dbOps,
 			);
@@ -153,7 +153,7 @@ export async function interceptAndModifyRequest(
 
 		// If the preferred model is the same as original, still check system prompt interception
 		if (preferredModel === originalModel) {
-			const systemPromptResult = await applySystemPromptInterception(
+			const systemPromptResult = applySystemPromptInterception(
 				requestBody,
 				dbOps,
 			);
@@ -188,7 +188,7 @@ export async function interceptAndModifyRequest(
 		requestBody.model = preferredModel;
 
 		// Apply system prompt interception
-		const systemPromptResult = await applySystemPromptInterception(
+		const systemPromptResult = applySystemPromptInterception(
 			requestBody,
 			dbOps,
 		);
@@ -438,20 +438,37 @@ function extractAgentDirectories(systemPrompt: string): string[] {
 }
 
 /**
+ * Type guard to check if a system array element is a SystemMessage with text
+ */
+function isSystemMessageWithText(
+	item: unknown,
+): item is SystemMessage & { text: string } {
+	return (
+		typeof item === "object" &&
+		item !== null &&
+		"type" in item &&
+		"text" in item &&
+		typeof (item as SystemMessage).text === "string"
+	);
+}
+
+/**
  * Applies system prompt interception if configured.
  *
  * This function extends the agent interceptor to provide template-based system prompt
  * replacement. It was implemented here rather than as a separate handler to maintain
  * cleaner architecture and ensure both features work together seamlessly.
  *
+ * Note: This function is synchronous as dbOps.getInterceptorConfig is synchronous.
+ *
  * @param requestBody - The parsed request body
  * @param dbOps - Database operations instance
  * @returns Object indicating if modifications were made
  */
-async function applySystemPromptInterception(
+function applySystemPromptInterception(
 	requestBody: RequestBody,
 	dbOps: DatabaseOperations,
-): Promise<{ modified: boolean; toolsRemoved: boolean }> {
+): { modified: boolean; toolsRemoved: boolean } {
 	const interceptLog = new Logger("SystemPromptInterceptor");
 
 	try {
@@ -472,14 +489,15 @@ async function applySystemPromptInterception(
 			return { modified: false, toolsRemoved: false };
 		}
 
-		// Check first system message for main agent identification
-		const firstSystemText = requestBody.system[0]?.text;
-		if (!firstSystemText) {
+		// Check first system message for main agent identification with type guard
+		const firstSystemMessage = requestBody.system[0];
+		if (!isSystemMessageWithText(firstSystemMessage)) {
 			interceptLog.info(
-				"No text in first system message, skipping interception",
+				"First system message is not in expected format, skipping interception",
 			);
 			return { modified: false, toolsRemoved: false };
 		}
+		const firstSystemText = firstSystemMessage.text;
 
 		// Check if it's the main Claude Code agent (not a subagent)
 		const isMainAgent = firstSystemText.includes(
@@ -502,30 +520,44 @@ async function applySystemPromptInterception(
 
 		// Extract the second system message (contains env block and other dynamic content)
 		const secondSystemMessage = requestBody.system[1];
-		if (!secondSystemMessage || !secondSystemMessage.text) {
+		if (!isSystemMessageWithText(secondSystemMessage)) {
 			interceptLog.info(
-				"No second system message found, skipping interception",
+				"Second system message is not in expected format, skipping interception",
 			);
 			return { modified: false, toolsRemoved: false };
 		}
 
-		// Extract the <env> block from the original system prompt
-		// Using non-greedy match to handle potential nested tags correctly
-		const envBlockRegex = /<env>([\s\S]*?)<\/env>/;
-		const envMatches = secondSystemMessage.text.match(envBlockRegex);
-		const envBlock = envMatches ? envMatches[0] : "";
+		// Extract the <env> block(s) from the original system prompt
+		// Using global regex to find all env blocks
+		const envBlockRegex = /<env>([\s\S]*?)<\/env>/g;
+		const envBlocks = secondSystemMessage.text.match(envBlockRegex) || [];
 
-		// Log sanitized info - avoid exposing potentially sensitive env data
-		if (envBlock) {
-			interceptLog.info(`Extracted env block (${envBlock.length} chars)`);
-		} else {
+		let envBlock = "";
+		if (envBlocks.length === 0) {
 			interceptLog.warn(
 				"No env block found in system prompt, using empty string",
+			);
+		} else if (envBlocks.length === 1) {
+			envBlock = envBlocks[0];
+			interceptLog.info(`Extracted env block (${envBlock.length} chars)`);
+		} else {
+			// Multiple env blocks found - concatenate them
+			envBlock = envBlocks.join("\n");
+			interceptLog.warn(
+				`Found ${envBlocks.length} env blocks, concatenating them (${envBlock.length} chars total)`,
 			);
 		}
 
 		// Validate and apply the template
 		const { promptTemplate, toolsEnabled } = interceptorConfig.config;
+
+		// Validate promptTemplate is a non-empty string
+		if (!promptTemplate || typeof promptTemplate !== "string") {
+			interceptLog.error(
+				"Invalid promptTemplate in config, skipping interception",
+			);
+			return { modified: false, toolsRemoved: false };
+		}
 
 		// Validate template has the placeholder
 		if (!promptTemplate.includes("{{env_block}}")) {
@@ -536,6 +568,13 @@ async function applySystemPromptInterception(
 
 		// Apply template with all occurrences replaced
 		const newPrompt = promptTemplate.replace(/\{\{env_block\}\}/g, envBlock);
+
+		// Verify replacement actually happened
+		if (newPrompt === promptTemplate && envBlock) {
+			interceptLog.warn(
+				"Template replacement may have failed - prompt unchanged despite env block present",
+			);
+		}
 
 		// Update the second system message
 		secondSystemMessage.text = newPrompt;
