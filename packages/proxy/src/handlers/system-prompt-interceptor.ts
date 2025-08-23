@@ -3,6 +3,7 @@ import { Logger } from "@ccflare/logger";
 
 const interceptLog = new Logger("SystemPromptInterceptor");
 const updateLog = new Logger("UpdateLastSeenPrompt");
+const updateToolsLog = new Logger("UpdateLastSeenTools");
 
 // Type definitions
 interface SystemMessage {
@@ -117,6 +118,14 @@ export async function applySystemPromptInterception(
 		interceptLog.info(
 			"Detected main agent request, applying system prompt interception",
 		);
+
+		// Capture and save tools array for main agent requests
+		if (requestBody.tools && Array.isArray(requestBody.tools)) {
+			// Update last-seen tools in next tick (truly non-blocking)
+			setImmediate(() => {
+				_updateLastSeenTools(requestBody.tools as Tool[], dbOps);
+			});
+		}
 
 		// Extract the second system message (contains env block and other dynamic content)
 		const secondSystemMessage = requestBody.system[1];
@@ -258,5 +267,33 @@ function _updateLastSeenPrompt(
 	} catch (error) {
 		// Log error but don't throw - this is a non-critical background operation
 		updateLog.error("Failed to update last-seen system prompt:", error);
+	}
+}
+
+/**
+ * Updates the last-seen tools array in the database.
+ * This is a non-critical synchronous operation that logs errors but doesn't throw.
+ * Should be called via setImmediate to avoid blocking the request.
+ *
+ * @param tools - The tools array from the main agent request
+ * @param dbOps - Database operations instance
+ */
+function _updateLastSeenTools(tools: Tool[], dbOps: DatabaseOperations): void {
+	try {
+		const toolsJson = JSON.stringify(tools);
+		const lastSeen = dbOps.getSystemKV("last_seen_tools");
+
+		// Only update if the tools have changed
+		if (toolsJson !== lastSeen) {
+			dbOps.setSystemKV("last_seen_tools", toolsJson);
+			updateToolsLog.info(
+				`Updated last-seen tools in database (${tools.length} tools)`,
+			);
+		} else {
+			updateToolsLog.info("Tools unchanged, skipping database update");
+		}
+	} catch (error) {
+		// Log error but don't throw - this is a non-critical background operation
+		updateToolsLog.error("Failed to update last-seen tools:", error);
 	}
 }
