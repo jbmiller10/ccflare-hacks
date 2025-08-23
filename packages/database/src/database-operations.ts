@@ -18,6 +18,7 @@ import {
 } from "./repositories/request.repository";
 import { StatsRepository } from "./repositories/stats.repository";
 import { StrategyRepository } from "./repositories/strategy.repository";
+import { SystemKVRepository } from "./repositories/system-kv.repository";
 
 export interface RuntimeConfig {
 	sessionDurationMs?: number;
@@ -39,6 +40,7 @@ export class DatabaseOperations implements StrategyStore, Disposable {
 	private stats: StatsRepository;
 	private agentPreferences: AgentPreferenceRepository;
 	private interceptor: InterceptorRepository;
+	private systemKV: SystemKVRepository;
 
 	constructor(dbPath?: string) {
 		const resolvedPath = dbPath ?? resolveDbPath();
@@ -65,6 +67,7 @@ export class DatabaseOperations implements StrategyStore, Disposable {
 		this.stats = new StatsRepository(this.db);
 		this.agentPreferences = new AgentPreferenceRepository(this.db);
 		this.interceptor = new InterceptorRepository(this.db);
+		this.systemKV = new SystemKVRepository(this.db);
 	}
 
 	setRuntimeConfig(runtime: RuntimeConfig): void {
@@ -369,6 +372,15 @@ export class DatabaseOperations implements StrategyStore, Disposable {
 		config: InterceptorConfig,
 	): void {
 		this.interceptor.setConfig(id, isEnabled, config);
+	}
+
+	// System KV operations delegated to repository
+	getSystemKV(key: string): string | null {
+		return this.systemKV.getValue(key);
+	}
+
+	setSystemKV(key: string, value: string): void {
+		this.systemKV.setValue(key, value);
 	}
 
 	close(): void {

@@ -99,6 +99,14 @@ export function ensureSchema(db: Database): void {
 			config TEXT NOT NULL
 		)
 	`);
+
+	// Create system_kv_store table for storing system-wide key-value pairs
+	db.run(`
+		CREATE TABLE IF NOT EXISTS system_kv_store (
+			key TEXT PRIMARY KEY,
+			value TEXT
+		)
+	`);
 }
 
 export function runMigrations(db: Database): void {
