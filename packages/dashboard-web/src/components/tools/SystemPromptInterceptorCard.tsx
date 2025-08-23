@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import type { Tool } from "../../api";
 import {
 	useResetSystemPromptOverride,
 	useSetSystemPromptOverride,
@@ -123,6 +124,16 @@ export function SystemPromptInterceptorCard() {
 		}));
 	};
 
+	const handleResetTool = (tool: Tool) => {
+		setToolOverrides((prev) => ({
+			...prev,
+			[tool.name]: {
+				isEnabled: true,
+				description: tool.description ?? "",
+			},
+		}));
+	};
+
 	if (isLoading) {
 		return (
 			<Card>
@@ -204,44 +215,104 @@ export function SystemPromptInterceptorCard() {
 								<div className="flex items-center gap-2">
 									<span>Tool Overrides</span>
 									<span className="text-sm text-muted-foreground">
-										({data.availableTools.length} tools)
+										({data.availableTools.length} tools
+										{(() => {
+											const modifiedCount = data.availableTools.filter(
+												(tool: Tool) => {
+													const override = toolOverrides[tool.name];
+													if (!override) return false;
+													return (
+														!override.isEnabled ||
+														(override.description &&
+															override.description !== (tool.description ?? ""))
+													);
+												},
+											).length;
+											return modifiedCount > 0
+												? `, ${modifiedCount} modified`
+												: "";
+										})()})
 									</span>
 								</div>
 							</AccordionTrigger>
 							<AccordionContent>
 								<div className="space-y-4 pt-4">
-									{data.availableTools.map((tool: any) => {
+									{data.availableTools.map((tool: Tool) => {
 										const override = toolOverrides[tool.name];
 										if (!override) return null;
+
+										// Check if tool has been modified from defaults
+										const isModified =
+											!override.isEnabled ||
+											(override.description &&
+												override.description !== (tool.description ?? ""));
 
 										return (
 											<div
 												key={tool.name}
-												className="space-y-3 p-4 border rounded-lg"
+												className={`space-y-3 p-4 border rounded-lg ${
+													isModified
+														? "border-orange-500/50 bg-orange-50/5"
+														: ""
+												}`}
 											>
 												<div className="flex items-center justify-between">
-													<div className="space-y-0.5">
-														<Label htmlFor={`tool-${tool.name}`}>
-															{tool.name}
-														</Label>
+													<div className="space-y-0.5 flex-1">
+														<div className="flex items-center gap-2">
+															<Label htmlFor={`tool-${tool.name}`}>
+																{tool.name}
+															</Label>
+															{isModified && (
+																<span className="text-xs text-orange-600 font-medium">
+																	(Modified)
+																</span>
+															)}
+														</div>
 														<p className="text-sm text-muted-foreground">
 															Enable or disable this tool
 														</p>
 													</div>
-													<Switch
-														id={`tool-${tool.name}`}
-														checked={override.isEnabled}
-														onCheckedChange={(checked) =>
-															handleToolToggle(tool.name, checked)
-														}
-													/>
+													<div className="flex items-center gap-2">
+														{isModified && (
+															<Button
+																variant="ghost"
+																size="sm"
+																onClick={() => handleResetTool(tool)}
+																title="Reset to default settings"
+															>
+																Reset
+															</Button>
+														)}
+														<Switch
+															id={`tool-${tool.name}`}
+															checked={override.isEnabled}
+															onCheckedChange={(checked) =>
+																handleToolToggle(tool.name, checked)
+															}
+														/>
+													</div>
 												</div>
 
 												{override.isEnabled && (
 													<div className="space-y-2">
-														<Label htmlFor={`tool-desc-${tool.name}`}>
-															Custom Description (optional)
-														</Label>
+														<div className="flex items-center justify-between">
+															<Label htmlFor={`tool-desc-${tool.name}`}>
+																Custom Description (optional)
+															</Label>
+															{override.description &&
+																override.description !==
+																	(tool.description ?? "") && (
+																	<span
+																		className="text-xs text-muted-foreground"
+																		title={
+																			tool.description ||
+																			"No original description"
+																		}
+																	>
+																		(hover for original)
+																	</span>
+																)}
+														</div>
 														<Textarea
 															id={`tool-desc-${tool.name}`}
 															placeholder={tool.description || "No description"}

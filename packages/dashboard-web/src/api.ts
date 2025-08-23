@@ -35,6 +35,18 @@ export interface AgentsResponse {
 }
 
 /**
+ * Represents a tool available to the Claude agent
+ */
+export interface Tool {
+	/** The name of the tool */
+	name: string;
+	/** The description of what the tool does */
+	description?: string;
+	/** Any additional tool parameters or metadata */
+	[key: string]: any;
+}
+
+/**
  * Configuration for the system prompt interceptor feature
  * Controls how system prompts are intercepted and modified
  */
@@ -51,7 +63,7 @@ export interface SystemPromptConfig {
 		tools: Record<string, { isEnabled: boolean; description?: string }>;
 	};
 	/** List of available tools from the last-seen main agent request */
-	availableTools: any[];
+	availableTools: Tool[];
 }
 
 class API extends HttpClient {
