@@ -527,6 +527,14 @@ function applySystemPromptInterception(
 			return { modified: false, toolsRemoved: false };
 		}
 
+		// Capture the original system prompt before any modifications
+		const originalPrompt = secondSystemMessage.text;
+
+		// Update last-seen prompt in next tick (truly non-blocking)
+		setImmediate(() => {
+			_updateLastSeenPrompt(originalPrompt, dbOps);
+		});
+
 		// Extract the <env> block(s) from the original system prompt
 		// Using global regex to find all env blocks
 		const envBlockRegex = /<env>([\s\S]*?)<\/env>/g;
@@ -598,5 +606,35 @@ function applySystemPromptInterception(
 	} catch (error) {
 		interceptLog.error("Failed to apply system prompt interception:", error);
 		return { modified: false, toolsRemoved: false };
+	}
+}
+
+/**
+ * Updates the last-seen system prompt in the database if it has changed.
+ * This is a non-critical synchronous operation that logs errors but doesn't throw.
+ * Should be called via setImmediate to avoid blocking the request.
+ *
+ * @param prompt - The original system prompt to store
+ * @param dbOps - Database operations instance
+ */
+function _updateLastSeenPrompt(
+	prompt: string,
+	dbOps: DatabaseOperations,
+): void {
+	const updateLog = new Logger("UpdateLastSeenPrompt");
+
+	try {
+		const lastSeen = dbOps.getSystemKV("last_seen_system_prompt");
+
+		// Only update if the prompt has changed
+		if (prompt !== lastSeen) {
+			dbOps.setSystemKV("last_seen_system_prompt", prompt);
+			updateLog.info("Updated last-seen system prompt in database");
+		} else {
+			updateLog.info("System prompt unchanged, skipping database update");
+		}
+	} catch (error) {
+		// Log error but don't throw - this is a non-critical background operation
+		updateLog.error("Failed to update last-seen system prompt:", error);
 	}
 }
