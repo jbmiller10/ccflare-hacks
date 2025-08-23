@@ -341,38 +341,35 @@ class API extends HttpClient {
 		return this.post<{ ok: boolean }>("/api/maintenance/compact");
 	}
 
-	/**
-	 * Get the current system prompt interceptor configuration
-	 * @returns Promise resolving to the current configuration
-	 * @throws Error if the request fails
-	 */
-	async getSystemPromptOverride(): Promise<SystemPromptConfig> {
-		try {
-			return await this.get<SystemPromptConfig>(
-				"/api/tools/interceptors/system-prompt",
-			);
-		} catch (error) {
-			if (error instanceof HttpError) {
-				throw new Error(error.message);
-			}
-			throw error;
-		}
+	// System prompt interceptor
+	async getSystemPromptOverride(): Promise<{
+		isEnabled: boolean;
+		promptTemplate: string;
+		toolsEnabled: boolean;
+	}> {
+		return this.get<{
+			isEnabled: boolean;
+			promptTemplate: string;
+			toolsEnabled: boolean;
+		}>("/api/tools/interceptors/system-prompt");
 	}
 
-	/**
-	 * Update the system prompt interceptor configuration
-	 * @param config - The new configuration to apply
-	 * @throws Error if the request fails or validation fails
-	 */
-	async setSystemPromptOverride(config: SystemPromptConfig): Promise<void> {
-		try {
-			await this.post("/api/tools/interceptors/system-prompt", config);
-		} catch (error) {
-			if (error instanceof HttpError) {
-				throw new Error(error.message);
-			}
-			throw error;
-		}
+	async setSystemPromptOverride(data: {
+		isEnabled: boolean;
+		promptTemplate: string;
+		toolsEnabled: boolean;
+	}): Promise<{
+		success: boolean;
+		isEnabled: boolean;
+		promptTemplate: string;
+		toolsEnabled: boolean;
+	}> {
+		return this.post<{
+			success: boolean;
+			isEnabled: boolean;
+			promptTemplate: string;
+			toolsEnabled: boolean;
+		}>("/api/tools/interceptors/system-prompt", data);
 	}
 }
 
