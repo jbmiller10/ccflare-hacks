@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import {
+	useResetSystemPromptOverride,
 	useSetSystemPromptOverride,
 	useSystemPromptOverride,
 } from "../../hooks/queries";
@@ -19,6 +20,7 @@ import { Textarea } from "../ui/textarea";
 export function SystemPromptInterceptorCard() {
 	const { data, isLoading } = useSystemPromptOverride();
 	const { mutate, isPending, isSuccess } = useSetSystemPromptOverride();
+	const { mutate: resetMutate } = useResetSystemPromptOverride();
 
 	// Local form state
 	const [isEnabled, setIsEnabled] = useState(false);
@@ -110,9 +112,12 @@ export function SystemPromptInterceptorCard() {
 					/>
 				</div>
 			</CardContent>
-			<CardFooter>
+			<CardFooter className="flex gap-2">
 				<Button onClick={handleSave} disabled={isPending}>
 					{isPending ? "Saving..." : isSuccess ? "Saved!" : "Save"}
+				</Button>
+				<Button variant="outline" onClick={() => resetMutate()}>
+					Reset to Default
 				</Button>
 			</CardFooter>
 		</Card>
