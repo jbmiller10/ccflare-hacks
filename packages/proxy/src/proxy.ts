@@ -1,6 +1,7 @@
 import { requestEvents, ServiceUnavailableError } from "@ccflare/core";
 import { Logger } from "@ccflare/logger";
 import {
+	applySystemPromptInterception,
 	createRequestMetadata,
 	ERROR_MESSAGES,
 	interceptAndModifyRequest,
@@ -104,18 +105,22 @@ export async function handleProxy(
 	// 2. Prepare request body
 	const { buffer: requestBodyBuffer } = await prepareRequestBody(req);
 
-	// 3. Intercept and modify request for agent model preferences and system prompt
-	const {
-		modifiedBody,
-		agentUsed,
-		originalModel,
-		appliedModel,
-		systemPromptModified,
-		toolsRemoved,
-	} = await interceptAndModifyRequest(requestBodyBuffer, ctx.dbOps);
+	// 3. Apply system prompt interception first
+	const promptInterceptedBody = await applySystemPromptInterception(
+		requestBodyBuffer,
+		ctx.dbOps,
+	);
 
-	// Use modified body if available
-	const finalBodyBuffer = modifiedBody || requestBodyBuffer;
+	// 4. Then perform agent interception on the potentially modified body
+	const { modifiedBody, agentUsed, originalModel, appliedModel } =
+		await interceptAndModifyRequest(
+			promptInterceptedBody || requestBodyBuffer,
+			ctx.dbOps,
+		);
+
+	// Use the final modified body (from agent interceptor) or fall back to earlier versions
+	const finalBodyBuffer =
+		modifiedBody || promptInterceptedBody || requestBodyBuffer;
 	const finalCreateBodyStream = () => {
 		if (!finalBodyBuffer) return undefined;
 		return new Response(finalBodyBuffer).body ?? undefined;
@@ -127,22 +132,14 @@ export async function handleProxy(
 		);
 	}
 
-	if (systemPromptModified) {
-		log.info("System prompt intercepted and modified");
-	}
-
-	if (toolsRemoved) {
-		log.info("Tools removed from request as per configuration");
-	}
-
-	// 4. Create request metadata with agent info
+	// 5. Create request metadata with agent info
 	const requestMeta = createRequestMetadata(req, url);
 	requestMeta.agentUsed = agentUsed;
 
-	// 5. Select accounts
+	// 6. Select accounts
 	const accounts = selectAccountsForRequest(requestMeta, ctx);
 
-	// 6. Handle no accounts case
+	// 7. Handle no accounts case
 	if (accounts.length === 0) {
 		return proxyUnauthenticated(
 			req,
@@ -154,13 +151,13 @@ export async function handleProxy(
 		);
 	}
 
-	// 7. Log selected accounts
+	// 8. Log selected accounts
 	log.info(
 		`Selected ${accounts.length} accounts: ${accounts.map((a) => a.name).join(", ")}`,
 	);
 	log.info(`Request: ${req.method} ${url.pathname}`);
 
-	// 8. Try each account
+	// 9. Try each account
 	for (let i = 0; i < accounts.length; i++) {
 		const response = await proxyWithAccount(
 			req,
@@ -178,7 +175,7 @@ export async function handleProxy(
 		}
 	}
 
-	// 9. All accounts failed
+	// 10. All accounts failed
 	throw new ServiceUnavailableError(
 		`${ERROR_MESSAGES.ALL_ACCOUNTS_FAILED} (${accounts.length} attempted)`,
 		ctx.provider.name,
