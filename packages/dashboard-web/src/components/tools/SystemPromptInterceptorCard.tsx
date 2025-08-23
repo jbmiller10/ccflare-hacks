@@ -112,8 +112,12 @@ export function SystemPromptInterceptorCard() {
 						<code className="bg-muted px-1 py-0.5 rounded">
 							{"{{env_block}}"}
 						</code>{" "}
-						to preserve the dynamic environment details from the original
-						prompt.
+						and{" "}
+						<code className="bg-muted px-1 py-0.5 rounded">
+							{"{{git_status_block}}"}
+						</code>{" "}
+						to preserve dynamic content (e.g., environment, git status) from the
+						original prompt.
 					</p>
 				</div>
 

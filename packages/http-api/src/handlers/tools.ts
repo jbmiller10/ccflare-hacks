@@ -20,11 +20,13 @@ export function createSystemPromptInterceptorHandler(
 				const lastSeenPrompt = dbOps.getSystemKV("last_seen_system_prompt");
 				const DEFAULT_TARGET_PROMPT =
 					"You are Claude Code, Anthropic's official CLI for Claude.";
+				const defaultTemplate =
+					"You are a helpful assistant.\n\n---\n\n{{env_block}}\n\n{{git_status_block}}";
 
 				return jsonResponse({
 					isEnabled: false,
 					targetPrompt: lastSeenPrompt || DEFAULT_TARGET_PROMPT,
-					replacementPrompt: lastSeenPrompt || "",
+					replacementPrompt: defaultTemplate,
 					toolsEnabled: true,
 				});
 			}

@@ -156,6 +156,19 @@ export async function applySystemPromptInterception(
 			);
 		}
 
+		// Extract the git status block from the original system prompt
+		// The git status block starts with "gitStatus:" and continues to the end
+		const gitStatusIndex = secondSystemMessage.text.indexOf("gitStatus:");
+		let gitStatusBlock = "";
+		if (gitStatusIndex !== -1) {
+			gitStatusBlock = secondSystemMessage.text.substring(gitStatusIndex);
+			interceptLog.info(
+				`Extracted git status block (${gitStatusBlock.length} chars)`,
+			);
+		} else {
+			interceptLog.info("No git status block found in system prompt");
+		}
+
 		// Validate and apply the template
 		const { replacementPrompt, toolsEnabled } = interceptorConfig.config;
 
@@ -179,7 +192,8 @@ export async function applySystemPromptInterception(
 		}
 
 		// Apply template with all occurrences replaced
-		const newPrompt = replacementPrompt.replace(/\{\{env_block\}\}/g, envBlock);
+		let newPrompt = replacementPrompt.replace(/\{\{env_block\}\}/g, envBlock);
+		newPrompt = newPrompt.replace(/\{\{git_status_block\}\}/g, gitStatusBlock);
 
 		// Verify replacement actually happened
 		if (newPrompt === replacementPrompt && envBlock) {
