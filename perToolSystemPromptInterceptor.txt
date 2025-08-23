@@ -1,0 +1,188 @@
+<roadmap name="perToolSystemPromptInterceptor" version="1.0">
+<context>
+This roadmap extends the System Prompt Interceptor feature to allow for fine-grained control over the tools available to the main Claude Code agent. It introduces the ability to enable or disable individual tools and override their descriptions directly from the dashboard. This will be managed within a new collapsible "Tool Overrides" section on the "Tools" page to maintain a clean UI.
+</context>
+<risks_and_alternatives>
+- **Risk:** The logic for identifying the main agent's request to capture its toolset relies on specific text in the system prompt. If Anthropic changes this text, the tool discovery mechanism might fail.
+- **Risk:** The UI for editing tool descriptions could become cluttered if an agent has a very large number of tools. The collapsible accordion design is intended to mitigate this.
+- **Alternative Considered:** A separate database table for tool overrides. Rejected in favor of extending the existing `interceptors` table's JSON `config` blob to keep the implementation simpler and contained within the existing feature's data structure.
+</risks_and_alternatives>
+code
+Code
+<ticket id="BE-01" depends_on="ROOT" is_breaking_change="false">
+    <title>Proxy: Persist the 'tools' Array from Main Agent Requests</title>
+    <description>
+        To enable dynamic UI for tool configuration, we first need to capture the set of tools available in a typical main agent request. This ticket modifies the system prompt interceptor logic to identify main agent requests and save their `tools` array to the key-value store for later retrieval by the API.
+    </description>
+    <implementation_notes>
+        1.  Open `packages/proxy/src/handlers/system-prompt-interceptor.ts`.
+        2.  Locate the `applySystemPromptInterception` function. It already contains logic to identify a "main agent" request.
+        3.  Inside the `try` block, after parsing the `requestBody`, and after the check that identifies the main agent request, add new logic to extract and save the `tools` array.
+        4.  Check if `requestBody.tools` exists and is an array.
+        5.  If it exists, create a new private async function `_updateLastSeenTools(tools: any[], dbOps: DatabaseOperations)` within the same file, analogous to the existing `_updateLastSeenPrompt`.
+        6.  This new function will `JSON.stringify` the `tools` array and save it to the `system_kv_store` table with the key `last_seen_tools` using `dbOps.setSystemKV`. Wrap this database call in a `try/catch` block to prevent failures from impacting the request flow.
+        7.  Call `_updateLastSeenTools` from `applySystemPromptInterception` using `setImmediate` to ensure it's a non-blocking operation, just like `_updateLastSeenPrompt`.
+    </implementation_notes>
+    <files>
+        <file path="packages/proxy/src/handlers/system-prompt-interceptor.ts" action="MODIFY">
+            Add logic to extract the `tools` array from main agent requests and save it to the `system_kv_store` using a new non-blocking helper function.
+        </file>
+    </files>
+    <verification_steps>
+        -   Run the application and send a proxy request using the main Claude Code agent.
+        -   Using a SQLite client, check the `system_kv_store` table.
+        -   Verify that a new row exists with `key = 'last_seen_tools'`.
+        -   Verify that its `value` is a JSON string representing the `tools` array from the request.
+    </verification_steps>
+</ticket>
+
+<ticket id="BE-02" depends_on="BE-01" is_breaking_change="true">
+    <title>API: Update Interceptor Config for Per-Tool Settings and Expose Tools</title>
+    <description>
+        BREAKING CHANGE: This ticket overhauls the configuration structure for the System Prompt Interceptor to support per-tool overrides, which is a breaking change for the API contract. The API will be updated to manage this new structure and to provide the frontend with the list of last-seen tools for dynamic UI rendering.
+    </description>
+    <implementation_notes>
+        1.  **Update Config Interfaces in `interceptor.repository.ts`:**
+            -   Open `packages/database/src/repositories/interceptor.repository.ts`.
+            -   Create a new exported interface `ToolOverride { isEnabled: boolean; description?: string; }`.
+            -   Modify the `InterceptorConfig` interface to replace `toolsEnabled: boolean` with `tools: Record&lt;string, ToolOverride&gt;`.
+
+        2.  **Update API Handler in `tools.ts`:**
+            -   Open `packages/http-api/src/handlers/tools.ts`.
+            -   In `createSystemPromptInterceptorHandler`, modify the `getSystemPromptConfig` handler:
+                a.  In addition to fetching the interceptor config, fetch the `last_seen_tools` string from the `system_kv_store` using `dbOps.getSystemKV('last_seen_tools')`.
+                b.  Parse this string as JSON into an array of tool objects. If it's null or fails to parse, default to an empty array `[]`.
+                c.  The handler should now return an object that includes the saved config AND the parsed list of available tools. Example: `{ isEnabled: boolean, config: InterceptorConfig, availableTools: Tool[] }`.
+                d.  Update the default/fallback config to reflect the new structure (e.g., `tools: {}`).
+            -   Modify the `setSystemPromptConfig` handler:
+                a.  It should now expect the new `InterceptorConfig` shape in the request body.
+                b.  Perform validation to ensure `body.config.tools` is an object.
+                c.  Save the updated structure to the database.
+
+        3.  **Adjust `InterceptorRepository`:**
+            -   Ensure the `get` and `set` methods in `InterceptorRepository` correctly handle the new `InterceptorConfig` structure when parsing and stringifying the `config` JSON. The generic implementation should already support this, but double-check types.
+    </implementation_notes>
+    <files>
+        <file path="packages/database/src/repositories/interceptor.repository.ts" action="MODIFY">
+            Update the `InterceptorConfig` interface to support a record of per-tool overrides instead of a single boolean.
+        </file>
+        <file path="packages/http-api/src/handlers/tools.ts" action="MODIFY">
+            Update the GET handler to read and return the last-seen tools from the KV store. Update the POST handler to accept and save the new, more complex configuration object for per-tool settings.
+        </file>
+    </files>
+    <verification_steps>
+        -   Run the server.
+        -   The `GET /api/tools/interceptors/system-prompt` endpoint should now return the new structure, including an `availableTools` array (which may be empty initially).
+        -   After sending a main agent request, the `GET` endpoint should return the tools from that request in `availableTools`.
+        -   A `POST` request with the new config structure (e.g., `{"isEnabled": true, "config": { "tools": { "Bash": { "isEnabled": false } } } }`) should succeed.
+    </verification_steps>
+</ticket>
+
+<ticket id="BE-03" depends_on="BE-02" is_breaking_change="false">
+    <title>Proxy: Implement Per-Tool Override Logic</title>
+    <description>
+        This ticket updates the proxy's interception logic to apply the newly defined per-tool overrides. It will replace the existing all-or-nothing tool toggle with a more nuanced approach that filters and modifies the `tools` array based on the user's configuration.
+    </description>
+    <implementation_notes>
+        1.  Open `packages/proxy/src/handlers/system-prompt-interceptor.ts`.
+        2.  In the `applySystemPromptInterception` function, after fetching the `interceptorConfig`, locate the logic that handles `toolsEnabled`.
+        3.  Remove the old logic that conditionally deletes `requestBody.tools`.
+        4.  Add new logic to process the `tools` array:
+            a.  Check if `requestBody.tools` is an array. If not, do nothing.
+            b.  Use `Array.prototype.reduce` or `flatMap` to build a new tools array.
+            c.  Iterate through each `tool` in the original `requestBody.tools`.
+            d.  For each `tool`, look up its configuration in `interceptorConfig.config.tools[tool.name]`.
+            e.  If no specific override exists for the tool, include it in the new array as-is (default enabled).
+            f.  If an override exists:
+                -   If `override.isEnabled` is `false`, exclude the tool from the new array.
+                -   If `override.isEnabled` is `true`:
+                    -   Create a copy of the tool object.
+                    -   If `override.description` is a non-empty string, replace the `description` on the copied tool object.
+                    -   Add the modified (or original if no description override) tool to the new array.
+            g.  Replace `requestBody.tools` with the newly constructed array.
+    </implementation_notes>
+    <files>
+        <file path="packages/proxy/src/handlers/system-prompt-interceptor.ts" action="MODIFY">
+            Replace the `toolsEnabled` logic with a loop that iterates through the request's `tools` array, applying individual enable/disable and description overrides based on the configuration fetched from the database.
+        </file>
+    </files>
+    <verification_steps>
+        -   Enable the interceptor and configure a tool (e.g., "Bash") to be disabled.
+        -   Send a main agent request. Verify the outgoing request to Claude does not contain the "Bash" tool in its `tools` array.
+        -   Configure a custom description for another tool (e.g., "WebFetch").
+        -   Send a main agent request. Verify the outgoing request contains the "WebFetch" tool with the modified description.
+    </verification_steps>
+</ticket>
+
+<ticket id="FE-01" depends_on="BE-02" is_breaking_change="false">
+    <title>FE: Update API Client and Hooks for Per-Tool Config</title>
+    <description>
+        This ticket updates the frontend data layer to align with the new, more detailed API contract for the System Prompt Interceptor, which now provides a list of available tools and a structured object for overrides.
+    </description>
+    <implementation_notes>
+        1.  **Update API Client Types in `api.ts`:**
+            -   Open `packages/dashboard-web/src/api.ts`.
+            -   Modify the `SystemPromptConfig` interface. It should now include `config: { targetPrompt: string; replacementPrompt: string; tools: Record&lt;string, { isEnabled: boolean; description?: string }&gt;; }` and `availableTools: any[]`.
+            -   Update the return type of `getSystemPromptOverride` to `Promise&lt;SystemPromptConfig&gt;`.
+            -   Update the argument type of `setSystemPromptOverride` to accept the new config structure.
+        2.  **Update React Query Hooks in `queries.ts`:**
+            -   Open `packages/dashboard-web/src/hooks/queries.ts`.
+            -   Update `useSystemPromptOverride` and `useSetSystemPromptOverride` to use the new `SystemPromptConfig` type. The function calls should already be compatible, but ensure the generic types for `useQuery` and `useMutation` are updated.
+    </implementation_notes>
+    <files>
+        <file path="packages/dashboard-web/src/api.ts" action="MODIFY">
+            Update the `SystemPromptConfig` interface and the signatures for `getSystemPromptOverride` and `setSystemPromptOverride` to match the new API contract.
+        </file>
+        <file path="packages/dashboard-web/src/hooks/queries.ts" action="MODIFY">
+            Update the type definitions used in the `useSystemPromptOverride` and `useSetSystemPromptOverride` hooks to reflect the new data structure.
+        </file>
+    </files>
+    <verification_steps>
+        -   Run `bun run typecheck` to ensure there are no type errors in the frontend codebase.
+        -   The application should compile successfully.
+    </verification_steps>
+</ticket>
+
+<ticket id="FE-02" depends_on="FE-01" is_breaking_change="false">
+    <title>FE: Build Collapsible UI for Per-Tool Configuration</title>
+    <description>
+        This ticket implements the user interface for managing per-tool settings. It replaces the single "Enable Tools" switch with a collapsible accordion section where each detected tool can be individually enabled/disabled and its description can be customized.
+    </description>
+    <implementation_notes>
+        1.  **Add Accordion Component:**
+            -   This project uses `shadcn-ui`. The `Accordion` component is not yet installed. Add it by running `bunx shadcn-ui@latest add accordion` in the `packages/dashboard-web` directory.
+        2.  **Update `SystemPromptInterceptorCard.tsx`:**
+            -   Open `packages/dashboard-web/src/components/tools/SystemPromptInterceptorCard.tsx`.
+            -   Import the newly added `Accordion`, `AccordionContent`, `AccordionItem`, and `AccordionTrigger` components.
+            -   Remove the old "Enable Tools" `Switch` component and its associated label and description.
+            -   **Local State:**
+                -   The component's local state should now manage the tool overrides. Create a state variable like `const [toolOverrides, setToolOverrides] = useState&lt;Record&lt;string, { isEnabled: boolean; description: string }&gt;&gt;({})`.
+            -   **Data Synchronization:**
+                -   In the `useEffect` that syncs data from `useSystemPromptOverride`, populate the `toolOverrides` state. For each tool in `data.availableTools`, merge its original properties with any saved overrides from `data.config.tools`. The description in state should be the custom one if it exists, otherwise the original one.
+            -   **UI Implementation:**
+                -   Add an `Accordion` component with a single `AccordionItem` titled "Tool Overrides".
+                -   Inside the `AccordionContent`, map over `data.availableTools`.
+                -   For each tool from `availableTools`, render a component that includes:
+                    a.  The tool's name as a label.
+                    b.  A `Switch` to toggle `toolOverrides[tool.name].isEnabled`.
+                    c.  A `Textarea` bound to `toolOverrides[tool.name].description`. Its `placeholder` should be the tool's original description.
+            -   **Save Logic:**
+                -   When the "Save" button is clicked, create the payload for the `mutate` function.
+                -   Iterate over the `toolOverrides` state. For each tool, compare its current state to its original state from `availableTools`. Only include overrides in the payload if they are different from the default (i.e., if `isEnabled` is false, or if `description` has been changed from the original). This keeps the saved config clean.
+                -   The final payload for `config.tools` should be `Record<string, { isEnabled: boolean; description?: string }>`. If a description is unchanged, the `description` property should be omitted from the payload for that tool.
+    </implementation_notes>
+    <files>
+        <file path="packages/dashboard-web/src/components/tools/SystemPromptInterceptorCard.tsx" action="MODIFY">
+            Replace the single tool toggle with an accordion. Inside, dynamically render a set of controls (switch, textarea) for each tool returned by the API. Manage the state for these controls and construct the correct payload on save.
+        </file>
+    </files>
+    <verification_steps>
+        -   Navigate to the Tools page.
+        -   Verify the "Tool Overrides" accordion is present.
+        -   Expand the accordion. It should list all tools from the last main agent request.
+        -   Verify each tool has a toggle switch and a textarea for its description.
+        -   Disable a tool, change a description, and click "Save".
+        -   Refresh the page. Verify your changes have been persisted and are correctly displayed.
+        -   Send a new proxy request and verify the tool overrides are being applied.
+    </verification_steps>
+</ticket>

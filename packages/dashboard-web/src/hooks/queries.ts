@@ -229,12 +229,8 @@ export const useSystemPromptOverride = () => {
 export const useSetSystemPromptOverride = () => {
 	const queryClient = useQueryClient();
 	return useMutation({
-		mutationFn: (data: {
-			isEnabled: boolean;
-			targetPrompt: string;
-			replacementPrompt: string;
-			toolsEnabled: boolean;
-		}) => api.setSystemPromptOverride(data),
+		mutationFn: (data: Parameters<typeof api.setSystemPromptOverride>[0]) =>
+			api.setSystemPromptOverride(data),
 		onSuccess: () => {
 			queryClient.invalidateQueries({
 				queryKey: queryKeys.systemPromptOverride(),
