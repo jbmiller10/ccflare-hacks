@@ -238,11 +238,23 @@ interface SystemMessage {
 	};
 }
 
+// Tool definition based on Anthropic API specification
+interface Tool {
+	type: string;
+	name: string;
+	description?: string;
+	input_schema?: {
+		type: string;
+		properties?: Record<string, unknown>;
+		required?: string[];
+	};
+}
+
 interface RequestBody {
 	messages?: Message[];
 	model?: string;
 	system?: string | SystemMessage[];
-	tools?: unknown;
+	tools?: Tool[];
 }
 
 /**
@@ -426,7 +438,12 @@ function extractAgentDirectories(systemPrompt: string): string[] {
 }
 
 /**
- * Applies system prompt interception if configured
+ * Applies system prompt interception if configured.
+ *
+ * This function extends the agent interceptor to provide template-based system prompt
+ * replacement. It was implemented here rather than as a separate handler to maintain
+ * cleaner architecture and ensure both features work together seamlessly.
+ *
  * @param requestBody - The parsed request body
  * @param dbOps - Database operations instance
  * @returns Object indicating if modifications were made
@@ -438,7 +455,7 @@ async function applySystemPromptInterception(
 	const interceptLog = new Logger("SystemPromptInterceptor");
 
 	try {
-		// Fetch interceptor configuration
+		// Early check: Fetch interceptor configuration before any processing
 		const interceptorConfig = dbOps.getInterceptorConfig("system_prompt");
 
 		// If not enabled or config missing, return unchanged
@@ -493,17 +510,32 @@ async function applySystemPromptInterception(
 		}
 
 		// Extract the <env> block from the original system prompt
+		// Using non-greedy match to handle potential nested tags correctly
 		const envBlockRegex = /<env>([\s\S]*?)<\/env>/;
-		const envMatch = secondSystemMessage.text.match(envBlockRegex);
-		const envBlock = envMatch ? envMatch[0] : "";
+		const envMatches = secondSystemMessage.text.match(envBlockRegex);
+		const envBlock = envMatches ? envMatches[0] : "";
 
-		interceptLog.info(
-			`Extracted env block (${envBlock.length} chars): ${envBlock.substring(0, 100)}...`,
-		);
+		// Log sanitized info - avoid exposing potentially sensitive env data
+		if (envBlock) {
+			interceptLog.info(`Extracted env block (${envBlock.length} chars)`);
+		} else {
+			interceptLog.warn(
+				"No env block found in system prompt, using empty string",
+			);
+		}
 
-		// Apply the template
+		// Validate and apply the template
 		const { promptTemplate, toolsEnabled } = interceptorConfig.config;
-		const newPrompt = promptTemplate.replace("{{env_block}}", envBlock);
+
+		// Validate template has the placeholder
+		if (!promptTemplate.includes("{{env_block}}")) {
+			interceptLog.warn(
+				"Template missing {{env_block}} placeholder, env data may be lost",
+			);
+		}
+
+		// Apply template with all occurrences replaced
+		const newPrompt = promptTemplate.replace(/\{\{env_block\}\}/g, envBlock);
 
 		// Update the second system message
 		secondSystemMessage.text = newPrompt;
@@ -515,9 +547,12 @@ async function applySystemPromptInterception(
 		// Handle tools toggle
 		let toolsRemoved = false;
 		if (!toolsEnabled && requestBody.tools !== undefined) {
+			const toolCount = requestBody.tools.length;
 			delete requestBody.tools;
 			toolsRemoved = true;
-			interceptLog.info("Removed tools from request as per configuration");
+			interceptLog.info(
+				`Removed ${toolCount} tools from request as per configuration`,
+			);
 		}
 
 		return { modified: true, toolsRemoved };
