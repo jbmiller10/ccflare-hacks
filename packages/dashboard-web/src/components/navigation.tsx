@@ -8,6 +8,7 @@ import {
 	Menu,
 	Shield,
 	Users,
+	Wrench,
 	X,
 	Zap,
 } from "lucide-react";
@@ -31,6 +32,7 @@ const navItems: NavItem[] = [
 	{ label: "Requests", icon: Activity, path: "/requests" },
 	{ label: "Accounts", icon: Users, path: "/accounts" },
 	{ label: "Agents", icon: Bot, path: "/agents" },
+	{ label: "Tools", icon: Wrench, path: "/tools" },
 	{ label: "Logs", icon: FileText, path: "/logs" },
 ];
 
