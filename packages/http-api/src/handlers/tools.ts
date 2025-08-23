@@ -16,21 +16,23 @@ export function createSystemPromptInterceptorHandler(
 
 			// Return default configuration if none exists
 			if (!config) {
-				// Try to get the last-seen system prompt as the default
+				// Try to get the last-seen system prompt as the default target
 				const lastSeenPrompt = dbOps.getSystemKV("last_seen_system_prompt");
-				const defaultPromptTemplate =
-					lastSeenPrompt || "Your custom prompt here.\n\n{{env_block}}";
+				const DEFAULT_TARGET_PROMPT =
+					"You are Claude Code, Anthropic's official CLI for Claude.";
 
 				return jsonResponse({
 					isEnabled: false,
-					promptTemplate: defaultPromptTemplate,
+					targetPrompt: lastSeenPrompt || DEFAULT_TARGET_PROMPT,
+					replacementPrompt: "",
 					toolsEnabled: true,
 				});
 			}
 
 			return jsonResponse({
 				isEnabled: config.isEnabled,
-				promptTemplate: config.config.promptTemplate,
+				targetPrompt: config.config.targetPrompt,
+				replacementPrompt: config.config.replacementPrompt,
 				toolsEnabled: config.config.toolsEnabled,
 			});
 		},
@@ -50,14 +52,26 @@ export function createSystemPromptInterceptorHandler(
 					return errorResponse(BadRequest("isEnabled must be a boolean"));
 				}
 
-				if (body.promptTemplate === undefined || body.promptTemplate === null) {
-					return errorResponse(BadRequest("promptTemplate is required"));
+				if (body.targetPrompt === undefined || body.targetPrompt === null) {
+					return errorResponse(BadRequest("targetPrompt is required"));
 				}
-				if (typeof body.promptTemplate !== "string") {
-					return errorResponse(BadRequest("promptTemplate must be a string"));
+				if (typeof body.targetPrompt !== "string") {
+					return errorResponse(BadRequest("targetPrompt must be a string"));
 				}
-				if (body.promptTemplate.trim() === "") {
-					return errorResponse(BadRequest("promptTemplate cannot be empty"));
+				if (body.targetPrompt.trim() === "") {
+					return errorResponse(BadRequest("targetPrompt cannot be empty"));
+				}
+
+				if (
+					body.replacementPrompt === undefined ||
+					body.replacementPrompt === null
+				) {
+					return errorResponse(BadRequest("replacementPrompt is required"));
+				}
+				if (typeof body.replacementPrompt !== "string") {
+					return errorResponse(
+						BadRequest("replacementPrompt must be a string"),
+					);
 				}
 
 				if (body.toolsEnabled === undefined || body.toolsEnabled === null) {
@@ -69,14 +83,16 @@ export function createSystemPromptInterceptorHandler(
 
 				// Save configuration to database
 				dbOps.setInterceptorConfig("system_prompt", body.isEnabled, {
-					promptTemplate: body.promptTemplate,
+					targetPrompt: body.targetPrompt,
+					replacementPrompt: body.replacementPrompt,
 					toolsEnabled: body.toolsEnabled,
 				});
 
 				return jsonResponse({
 					success: true,
 					isEnabled: body.isEnabled,
-					promptTemplate: body.promptTemplate,
+					targetPrompt: body.targetPrompt,
+					replacementPrompt: body.replacementPrompt,
 					toolsEnabled: body.toolsEnabled,
 				});
 			} catch (error) {

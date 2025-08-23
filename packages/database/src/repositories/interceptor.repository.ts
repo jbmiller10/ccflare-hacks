@@ -1,7 +1,8 @@
 import { BaseRepository } from "./base.repository";
 
 export interface InterceptorConfig {
-	promptTemplate: string;
+	targetPrompt: string;
+	replacementPrompt: string;
 	toolsEnabled: boolean;
 }
 

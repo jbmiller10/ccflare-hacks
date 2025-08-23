@@ -231,7 +231,8 @@ export const useSetSystemPromptOverride = () => {
 	return useMutation({
 		mutationFn: (data: {
 			isEnabled: boolean;
-			promptTemplate: string;
+			targetPrompt: string;
+			replacementPrompt: string;
 			toolsEnabled: boolean;
 		}) => api.setSystemPromptOverride(data),
 		onSuccess: () => {
