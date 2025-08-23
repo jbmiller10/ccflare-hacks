@@ -104,9 +104,15 @@ export async function handleProxy(
 	// 2. Prepare request body
 	const { buffer: requestBodyBuffer } = await prepareRequestBody(req);
 
-	// 3. Intercept and modify request for agent model preferences
-	const { modifiedBody, agentUsed, originalModel, appliedModel } =
-		await interceptAndModifyRequest(requestBodyBuffer, ctx.dbOps);
+	// 3. Intercept and modify request for agent model preferences and system prompt
+	const {
+		modifiedBody,
+		agentUsed,
+		originalModel,
+		appliedModel,
+		systemPromptModified,
+		toolsRemoved,
+	} = await interceptAndModifyRequest(requestBodyBuffer, ctx.dbOps);
 
 	// Use modified body if available
 	const finalBodyBuffer = modifiedBody || requestBodyBuffer;
@@ -119,6 +125,14 @@ export async function handleProxy(
 		log.info(
 			`Agent ${agentUsed} detected, model changed from ${originalModel} to ${appliedModel}`,
 		);
+	}
+
+	if (systemPromptModified) {
+		log.info("System prompt intercepted and modified");
+	}
+
+	if (toolsRemoved) {
+		log.info("Tools removed from request as per configuration");
 	}
 
 	// 4. Create request metadata with agent info
