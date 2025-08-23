@@ -374,6 +374,10 @@ export class DatabaseOperations implements StrategyStore, Disposable {
 		this.interceptor.setConfig(id, isEnabled, config);
 	}
 
+	deleteInterceptorConfig(id: string): boolean {
+		return this.interceptor.delete(id);
+	}
+
 	// System KV operations delegated to repository
 	getSystemKV(key: string): string | null {
 		return this.systemKV.getValue(key);

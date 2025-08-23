@@ -39,4 +39,15 @@ export class InterceptorRepository extends BaseRepository<InterceptorRow> {
 			[id, isEnabledInt, configJson],
 		);
 	}
+
+	/**
+	 * Delete an interceptor configuration
+	 */
+	delete(id: string): boolean {
+		const changes = this.runWithChanges(
+			"DELETE FROM interceptors WHERE id = ?",
+			[id],
+		);
+		return changes > 0;
+	}
 }

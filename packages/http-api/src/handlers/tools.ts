@@ -16,9 +16,14 @@ export function createSystemPromptInterceptorHandler(
 
 			// Return default configuration if none exists
 			if (!config) {
+				// Try to get the last-seen system prompt as the default
+				const lastSeenPrompt = dbOps.getSystemKV("last_seen_system_prompt");
+				const defaultPromptTemplate =
+					lastSeenPrompt || "Your custom prompt here.\n\n{{env_block}}";
+
 				return jsonResponse({
 					isEnabled: false,
-					promptTemplate: "Your custom prompt here.\n\n{{env_block}}",
+					promptTemplate: defaultPromptTemplate,
 					toolsEnabled: true,
 				});
 			}
@@ -80,6 +85,18 @@ export function createSystemPromptInterceptorHandler(
 				}
 				throw error;
 			}
+		},
+
+		/**
+		 * Reset system prompt interceptor configuration
+		 */
+		resetSystemPromptConfig: (): Response => {
+			// Delete the interceptor config, which will cause the GET endpoint
+			// to return the default state with last-seen prompt
+			dbOps.deleteInterceptorConfig("system_prompt");
+
+			// Return 204 No Content to indicate successful deletion
+			return new Response(null, { status: 204 });
 		},
 	};
 }
