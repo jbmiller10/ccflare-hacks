@@ -1,0 +1,117 @@
+<roadmap name="refactorAndEnhanceInterceptor" version="2.1">
+<context>
+This roadmap refactors the existing System Prompt Interceptor functionality into its own dedicated file for better separation of concerns, and then builds upon it. The core logic, which currently resides within the agent interceptor, will be moved. The plan then proceeds to fix the UI prefill/reset logic to correctly handle the two-part system prompt structure.
+</context>
+<risks_and_alternatives>
+- **Risk:** The refactoring must be done carefully to ensure no functionality is broken. The function signatures and the call site in `proxy.ts` must be perfectly aligned.
+</risks_and_alternatives>
+
+<ticket id="BE-01-Refactor" depends_on="ROOT" is_breaking_change="false">
+    <title>Refactor: Extract System Prompt Interceptor Logic to a New File</title>
+    <description>
+        This ticket refactors the existing system prompt interception logic out of `agent-interceptor.ts` and into a new, dedicated file `system-prompt-interceptor.ts`. This improves code organization and separation of concerns.
+    </description>
+    <implementation_notes>
+        1.  **Create New File:** Create the file `packages/proxy/src/handlers/system-prompt-interceptor.ts`.
+        2.  **Move Logic:**
+            -   Go to `packages/proxy/src/handlers/agent-interceptor.ts`.
+            -   Cut the entire `applySystemPromptInterception` function and the `_updateLastSeenPrompt` helper function from this file.
+            -   Paste both functions into the new `system-prompt-interceptor.ts` file.
+        3.  **Update Exports/Imports:**
+            -   In the new `system-prompt-interceptor.ts`, export the `applySystemPromptInterception` function. Make sure all necessary imports (Logger, DatabaseOperations, etc.) are added to this new file.
+            -   In `agent-interceptor.ts`, remove the now-unused helper functions and imports.
+        4.  **Update `agent-interceptor.ts` Call Site:**
+            -   The `interceptAndModifyRequest` function in `agent-interceptor.ts` should no longer call `applySystemPromptInterception`. Remove the calls and the returned properties (`systemPromptModified`, `toolsRemoved`). The function should now only concern itself with agent detection and model modification.
+        5.  **Update `proxy.ts` Call Site:**
+            -   Open `packages/proxy/src/proxy.ts`.
+            -   Import `applySystemPromptInterception` from the new `system-prompt-interceptor.ts`.
+            -   In the `handleProxy` function, there is a call to `interceptAndModifyRequest`. **Before** this line, add a new step:
+                ```typescript
+                // Apply system prompt interception first
+                const promptInterceptedBody = await applySystemPromptInterception(requestBodyBuffer, ctx.dbOps);
+                
+                // Then, perform agent interception on the potentially modified body
+                const { modifiedBody, agentUsed, originalModel, appliedModel } =
+                    await interceptAndModifyRequest(promptInterceptedBody || requestBodyBuffer, ctx.dbOps);
+                ```
+            -   Ensure that the `finalBodyBuffer` and subsequent logic correctly use the `modifiedBody` returned from the agent interception.
+    </implementation_notes>
+    <files>
+        <file path="packages/proxy/src/handlers/system-prompt-interceptor.ts" action="CREATE">
+            This file will now contain the `applySystemPromptInterception` and `_updateLastSeenPrompt` functions, moved from `agent-interceptor.ts`.
+        </file>
+        <file path="packages/proxy/src/handlers/agent-interceptor.ts" action="MODIFY">
+            Remove the system prompt interception logic from this file. The `interceptAndModifyRequest` function should be simplified to only handle agent-related tasks.
+        </file>
+        <file path="packages/proxy/src/proxy.ts" action="MODIFY">
+            Update the `handleProxy` function to call the newly refactored `applySystemPromptInterception` first, and then pass its result to `interceptAndModifyRequest`.
+        </file>
+    </files>
+    <verification_steps>
+        -   The application should compile and run without errors.
+        -   All existing functionality (agent detection, model override, system prompt replacement) should work exactly as it did before the refactor.
+    </verification_steps>
+</ticket>
+
+<ticket id="BE-02-API-Fix" depends_on="BE-01-Refactor" is_breaking_change="false">
+    <title>API: Correct Default State for Interceptor Reset</title>
+    <description>
+        This ticket fixes the API to provide the correct default state for the UI when the interceptor config is reset. It will prefill both the target and replacement fields with the last-seen instructional prompt.
+    </description>
+    <implementation_notes>
+        1.  **Update GET Handler:** In `packages/http-api/src/handlers/tools.ts`, modify the `getSystemPromptConfig` handler.
+        2.  Inside the `if (!config)` block:
+            -   Fetch the `last_seen_system_prompt` from the KV store.
+            -   Modify the default response object to be:
+                ```json
+                {
+                  "isEnabled": false,
+                  "targetPrompt": lastSeenPrompt || "Could not find a recent system prompt...",
+                  "replacementPrompt": lastSeenPrompt || "",
+                  "toolsEnabled": true
+                }
+                ```
+            This ensures both fields are correctly pre-filled for the user upon reset or first load.
+    </implementation_notes>
+    <files>
+        <file path="packages/http-api/src/handlers/tools.ts" action="MODIFY">
+            Update the default response in `getSystemPromptConfig` to populate both `targetPrompt` and `replacementPrompt` with the last-seen value, providing a better user experience on reset.
+        </file>
+    </files>
+    <verification_steps>
+        -   Call the `DELETE` endpoint to reset the configuration.
+        -   Call the `GET /api/tools/interceptors/system-prompt` endpoint.
+        -   Verify the response body contains the last-seen prompt in both the `targetPrompt` and `replacementPrompt` fields.
+    </verification_steps>
+</ticket>
+
+<ticket id="FE-01-UI-Fix" depends_on="BE-02-API-Fix" is_breaking_change="false">
+    <title>FE: Finalize Tools Page UI and Logic</title>
+    <description>
+        This ticket updates the frontend UI to match the new backend logic. It will make the "Target Prompt" read-only, clarifying its purpose, and ensure the "Reset" button works as intended.
+    </description>
+    <implementation_notes>
+        1.  **UI Component (`packages/dashboard-web/src/components/tools/SystemPromptInterceptorCard.tsx`):**
+            -   Make the "Target Prompt" `Textarea` component `readOnly`. Its purpose is to show the user *what* is being replaced.
+            -   Change the `Label` for the "Replacement Prompt" textarea to "Custom Prompt Template" to be more descriptive.
+            -   Ensure the `useEffect` hook that syncs query data to local state correctly populates both `targetPrompt` (for display) and `replacementPrompt` (for editing) when the user clicks "Reset".
+        2.  **Validation Fix (`packages/http-api/src/handlers/tools.ts`):**
+            -   As identified in the code review, the validation for `replacementPrompt` is too strict.
+            -   In the `setSystemPromptConfig` handler, **remove the check that rejects an empty `replacementPrompt`**. An empty string is a valid state.
+    </implementation_notes>
+    <files>
+        <file path="packages/dashboard-web/src/components/tools/SystemPromptInterceptorCard.tsx" action="MODIFY">
+            Make the target prompt textarea read-only and update its label/description. Update the label for the replacement prompt textarea.
+        </file>
+        <file path="packages/http-api/src/handlers/tools.ts" action="MODIFY">
+            In the `setSystemPromptConfig` handler, remove the validation that prevents `replacementPrompt` from being an empty string.
+        </file>
+    </files>
+    <verification_steps>
+        -   Navigate to the Tools page.
+        -   Click "Reset to Default".
+        -   **Expected Result:** The "Target Prompt" textarea should be non-editable and show the last-seen prompt. The "Custom Prompt Template" textarea should also be populated with the last-seen prompt, ready for editing.
+        -   Clear the "Custom Prompt Template" textarea and click "Save". The save operation should succeed.
+    </verification_steps>
+</ticket>
+</roadmap>

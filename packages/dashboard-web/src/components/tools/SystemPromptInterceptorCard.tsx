@@ -90,6 +90,7 @@ export function SystemPromptInterceptorCard() {
 						value={targetPrompt}
 						onChange={(e) => setTargetPrompt(e.target.value)}
 						className="min-h-[150px]"
+						readOnly
 					/>
 					<p className="text-sm text-muted-foreground">
 						This is the prompt that will be detected and replaced. After reset,
@@ -98,7 +99,7 @@ export function SystemPromptInterceptorCard() {
 				</div>
 
 				<div className="space-y-2">
-					<Label htmlFor="replacement-prompt">Replacement Prompt</Label>
+					<Label htmlFor="replacement-prompt">Custom Prompt Template</Label>
 					<Textarea
 						id="replacement-prompt"
 						placeholder="Your custom replacement prompt here..."
