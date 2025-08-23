@@ -34,10 +34,16 @@ export interface AgentsResponse {
 	workspaces: AgentWorkspace[];
 }
 
-// System prompt interceptor configuration interface
+/**
+ * Configuration for the system prompt interceptor feature
+ * Controls how system prompts are intercepted and modified
+ */
 export interface SystemPromptConfig {
+	/** Whether the system prompt interceptor is enabled */
 	isEnabled: boolean;
+	/** Template for the system prompt with {{env_block}} placeholder for environment variables */
 	promptTemplate: string;
+	/** Whether tools are enabled in the intercepted system prompt */
 	toolsEnabled: boolean;
 }
 
@@ -335,13 +341,29 @@ class API extends HttpClient {
 		return this.post<{ ok: boolean }>("/api/maintenance/compact");
 	}
 
-	// System prompt interceptor methods
+	/**
+	 * Get the current system prompt interceptor configuration
+	 * @returns Promise resolving to the current configuration
+	 * @throws Error if the request fails
+	 */
 	async getSystemPromptOverride(): Promise<SystemPromptConfig> {
-		return this.get<SystemPromptConfig>(
-			"/api/tools/interceptors/system-prompt",
-		);
+		try {
+			return await this.get<SystemPromptConfig>(
+				"/api/tools/interceptors/system-prompt",
+			);
+		} catch (error) {
+			if (error instanceof HttpError) {
+				throw new Error(error.message);
+			}
+			throw error;
+		}
 	}
 
+	/**
+	 * Update the system prompt interceptor configuration
+	 * @param config - The new configuration to apply
+	 * @throws Error if the request fails or validation fails
+	 */
 	async setSystemPromptOverride(config: SystemPromptConfig): Promise<void> {
 		try {
 			await this.post("/api/tools/interceptors/system-prompt", config);
