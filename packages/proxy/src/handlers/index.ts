@@ -11,4 +11,5 @@ export {
 	validateProviderPath,
 } from "./request-handler";
 export { handleProxyError } from "./response-processor";
+export { applySystemPromptInterception } from "./system-prompt-interceptor";
 export { getValidAccessToken } from "./token-manager";
