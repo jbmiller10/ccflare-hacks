@@ -212,3 +212,28 @@ export const useCompactDb = () => {
 		mutationFn: () => api.compactDb(),
 	});
 };
+
+// System prompt interceptor hooks
+export const useSystemPromptOverride = () => {
+	return useQuery({
+		queryKey: queryKeys.systemPromptOverride(),
+		queryFn: () => api.getSystemPromptOverride(),
+		refetchInterval: REFRESH_INTERVALS.slow, // Poll for config changes
+	});
+};
+
+export const useSetSystemPromptOverride = () => {
+	const queryClient = useQueryClient();
+	return useMutation({
+		mutationFn: (data: {
+			isEnabled: boolean;
+			promptTemplate: string;
+			toolsEnabled: boolean;
+		}) => api.setSystemPromptOverride(data),
+		onSuccess: () => {
+			queryClient.invalidateQueries({
+				queryKey: queryKeys.systemPromptOverride(),
+			});
+		},
+	});
+};

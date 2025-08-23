@@ -22,4 +22,6 @@ export const queryKeys = {
 	logHistory: () => [...queryKeys.all, "logs", "history"] as const,
 	defaultAgentModel: () =>
 		[...queryKeys.all, "config", "defaultAgentModel"] as const,
+	systemPromptOverride: () =>
+		[...queryKeys.all, "tools", "systemPromptOverride"] as const,
 } as const;

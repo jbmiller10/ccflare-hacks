@@ -327,6 +327,37 @@ class API extends HttpClient {
 	async compactDb(): Promise<{ ok: boolean }> {
 		return this.post<{ ok: boolean }>("/api/maintenance/compact");
 	}
+
+	// System prompt interceptor
+	async getSystemPromptOverride(): Promise<{
+		isEnabled: boolean;
+		promptTemplate: string;
+		toolsEnabled: boolean;
+	}> {
+		return this.get<{
+			isEnabled: boolean;
+			promptTemplate: string;
+			toolsEnabled: boolean;
+		}>("/api/tools/interceptors/system-prompt");
+	}
+
+	async setSystemPromptOverride(data: {
+		isEnabled: boolean;
+		promptTemplate: string;
+		toolsEnabled: boolean;
+	}): Promise<{
+		success: boolean;
+		isEnabled: boolean;
+		promptTemplate: string;
+		toolsEnabled: boolean;
+	}> {
+		return this.post<{
+			success: boolean;
+			isEnabled: boolean;
+			promptTemplate: string;
+			toolsEnabled: boolean;
+		}>("/api/tools/interceptors/system-prompt", data);
+	}
 }
 
 export const api = new API();
