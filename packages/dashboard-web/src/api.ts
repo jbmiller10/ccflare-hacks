@@ -371,6 +371,10 @@ class API extends HttpClient {
 			toolsEnabled: boolean;
 		}>("/api/tools/interceptors/system-prompt", data);
 	}
+
+	async resetSystemPromptOverride(): Promise<void> {
+		await this.delete("/api/tools/interceptors/system-prompt");
+	}
 }
 
 export const api = new API();
