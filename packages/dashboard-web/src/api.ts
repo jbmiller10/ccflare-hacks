@@ -41,12 +41,17 @@ export interface AgentsResponse {
 export interface SystemPromptConfig {
 	/** Whether the system prompt interceptor is enabled */
 	isEnabled: boolean;
-	/** The target prompt to look for and replace */
-	targetPrompt: string;
-	/** The replacement prompt with {{env_block}} placeholder for environment variables */
-	replacementPrompt: string;
-	/** Whether tools are enabled in the intercepted system prompt */
-	toolsEnabled: boolean;
+	/** Configuration for prompt interception and tool overrides */
+	config: {
+		/** The target prompt to look for and replace */
+		targetPrompt: string;
+		/** The replacement prompt with {{env_block}} placeholder for environment variables */
+		replacementPrompt: string;
+		/** Per-tool override settings */
+		tools: Record<string, { isEnabled: boolean; description?: string }>;
+	};
+	/** List of available tools from the last-seen main agent request */
+	availableTools: any[];
 }
 
 class API extends HttpClient {
@@ -344,39 +349,19 @@ class API extends HttpClient {
 	}
 
 	// System prompt interceptor
-	async getSystemPromptOverride(): Promise<{
-		isEnabled: boolean;
-		targetPrompt: string;
-		replacementPrompt: string;
-		toolsEnabled: boolean;
-	}> {
-		return this.get<{
-			isEnabled: boolean;
-			targetPrompt: string;
-			replacementPrompt: string;
-			toolsEnabled: boolean;
-		}>("/api/tools/interceptors/system-prompt");
+	async getSystemPromptOverride(): Promise<SystemPromptConfig> {
+		return this.get<SystemPromptConfig>(
+			"/api/tools/interceptors/system-prompt",
+		);
 	}
 
-	async setSystemPromptOverride(data: {
-		isEnabled: boolean;
-		targetPrompt: string;
-		replacementPrompt: string;
-		toolsEnabled: boolean;
-	}): Promise<{
-		success: boolean;
-		isEnabled: boolean;
-		targetPrompt: string;
-		replacementPrompt: string;
-		toolsEnabled: boolean;
-	}> {
-		return this.post<{
-			success: boolean;
-			isEnabled: boolean;
-			targetPrompt: string;
-			replacementPrompt: string;
-			toolsEnabled: boolean;
-		}>("/api/tools/interceptors/system-prompt", data);
+	async setSystemPromptOverride(
+		data: SystemPromptConfig,
+	): Promise<SystemPromptConfig & { success: boolean }> {
+		return this.post<SystemPromptConfig & { success: boolean }>(
+			"/api/tools/interceptors/system-prompt",
+			data,
+		);
 	}
 
 	async resetSystemPromptOverride(): Promise<void> {
