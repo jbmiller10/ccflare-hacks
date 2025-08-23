@@ -14,6 +14,18 @@ export function createSystemPromptInterceptorHandler(
 		getSystemPromptConfig: (): Response => {
 			const config = dbOps.getInterceptorConfig("system_prompt");
 
+			// Fetch the last-seen tools from KV store
+			const lastSeenToolsJson = dbOps.getSystemKV("last_seen_tools");
+			let availableTools: any[] = [];
+			if (lastSeenToolsJson) {
+				try {
+					availableTools = JSON.parse(lastSeenToolsJson);
+				} catch (_error) {
+					// If parsing fails, default to empty array
+					availableTools = [];
+				}
+			}
+
 			// Return default configuration if none exists
 			if (!config) {
 				// Try to get the last-seen system prompt as the default target
@@ -25,17 +37,26 @@ export function createSystemPromptInterceptorHandler(
 
 				return jsonResponse({
 					isEnabled: false,
-					targetPrompt: lastSeenPrompt || DEFAULT_TARGET_PROMPT,
-					replacementPrompt: defaultTemplate,
-					toolsEnabled: true,
+					config: {
+						targetPrompt: lastSeenPrompt || DEFAULT_TARGET_PROMPT,
+						replacementPrompt: defaultTemplate,
+						tools: {},
+					},
+					availableTools,
 				});
 			}
 
+			// Ensure backward compatibility by converting old config format
+			const configTools = config.config.tools || {};
+
 			return jsonResponse({
 				isEnabled: config.isEnabled,
-				targetPrompt: config.config.targetPrompt,
-				replacementPrompt: config.config.replacementPrompt,
-				toolsEnabled: config.config.toolsEnabled,
+				config: {
+					targetPrompt: config.config.targetPrompt,
+					replacementPrompt: config.config.replacementPrompt,
+					tools: configTools,
+				},
+				availableTools,
 			});
 		},
 
@@ -54,50 +75,98 @@ export function createSystemPromptInterceptorHandler(
 					return errorResponse(BadRequest("isEnabled must be a boolean"));
 				}
 
-				if (body.targetPrompt === undefined || body.targetPrompt === null) {
-					return errorResponse(BadRequest("targetPrompt is required"));
-				}
-				if (typeof body.targetPrompt !== "string") {
-					return errorResponse(BadRequest("targetPrompt must be a string"));
-				}
-				if (body.targetPrompt.trim() === "") {
-					return errorResponse(BadRequest("targetPrompt cannot be empty"));
+				// Validate config object exists
+				if (!body.config || typeof body.config !== "object") {
+					return errorResponse(BadRequest("config object is required"));
 				}
 
 				if (
-					body.replacementPrompt === undefined ||
-					body.replacementPrompt === null
+					body.config.targetPrompt === undefined ||
+					body.config.targetPrompt === null
 				) {
-					return errorResponse(BadRequest("replacementPrompt is required"));
+					return errorResponse(BadRequest("config.targetPrompt is required"));
 				}
-				if (typeof body.replacementPrompt !== "string") {
+				if (typeof body.config.targetPrompt !== "string") {
 					return errorResponse(
-						BadRequest("replacementPrompt must be a string"),
+						BadRequest("config.targetPrompt must be a string"),
+					);
+				}
+				if (body.config.targetPrompt.trim() === "") {
+					return errorResponse(
+						BadRequest("config.targetPrompt cannot be empty"),
+					);
+				}
+
+				if (
+					body.config.replacementPrompt === undefined ||
+					body.config.replacementPrompt === null
+				) {
+					return errorResponse(
+						BadRequest("config.replacementPrompt is required"),
+					);
+				}
+				if (typeof body.config.replacementPrompt !== "string") {
+					return errorResponse(
+						BadRequest("config.replacementPrompt must be a string"),
 					);
 				}
 				// Note: Empty strings are intentionally allowed for replacementPrompt
 				// This enables users to effectively disable prompt replacement
 
-				if (body.toolsEnabled === undefined || body.toolsEnabled === null) {
-					return errorResponse(BadRequest("toolsEnabled is required"));
+				// Validate tools object
+				if (body.config.tools === undefined || body.config.tools === null) {
+					// If tools is not provided, default to empty object
+					body.config.tools = {};
 				}
-				if (typeof body.toolsEnabled !== "boolean") {
-					return errorResponse(BadRequest("toolsEnabled must be a boolean"));
+				if (
+					typeof body.config.tools !== "object" ||
+					Array.isArray(body.config.tools)
+				) {
+					return errorResponse(BadRequest("config.tools must be an object"));
+				}
+
+				// Validate each tool override
+				for (const [toolName, override] of Object.entries(body.config.tools)) {
+					if (typeof override !== "object" || override === null) {
+						return errorResponse(
+							BadRequest(`config.tools.${toolName} must be an object`),
+						);
+					}
+					const toolOverride = override as any;
+					if (typeof toolOverride.isEnabled !== "boolean") {
+						return errorResponse(
+							BadRequest(
+								`config.tools.${toolName}.isEnabled must be a boolean`,
+							),
+						);
+					}
+					if (
+						toolOverride.description !== undefined &&
+						typeof toolOverride.description !== "string"
+					) {
+						return errorResponse(
+							BadRequest(
+								`config.tools.${toolName}.description must be a string if provided`,
+							),
+						);
+					}
 				}
 
 				// Save configuration to database
 				dbOps.setInterceptorConfig("system_prompt", body.isEnabled, {
-					targetPrompt: body.targetPrompt,
-					replacementPrompt: body.replacementPrompt,
-					toolsEnabled: body.toolsEnabled,
+					targetPrompt: body.config.targetPrompt,
+					replacementPrompt: body.config.replacementPrompt,
+					tools: body.config.tools,
 				});
 
 				return jsonResponse({
 					success: true,
 					isEnabled: body.isEnabled,
-					targetPrompt: body.targetPrompt,
-					replacementPrompt: body.replacementPrompt,
-					toolsEnabled: body.toolsEnabled,
+					config: {
+						targetPrompt: body.config.targetPrompt,
+						replacementPrompt: body.config.replacementPrompt,
+						tools: body.config.tools,
+					},
 				});
 			} catch (error) {
 				if (error instanceof SyntaxError) {

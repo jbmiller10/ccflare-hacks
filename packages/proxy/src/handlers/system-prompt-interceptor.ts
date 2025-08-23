@@ -179,7 +179,8 @@ export async function applySystemPromptInterception(
 		}
 
 		// Validate and apply the template
-		const { replacementPrompt, toolsEnabled } = interceptorConfig.config;
+		const { replacementPrompt, tools: toolOverrides } =
+			interceptorConfig.config;
 
 		// Validate replacementPrompt is a non-empty string
 		if (!replacementPrompt || typeof replacementPrompt !== "string") {
@@ -218,15 +219,52 @@ export async function applySystemPromptInterception(
 			`Applied replacement prompt, new prompt length: ${newPrompt.length} chars`,
 		);
 
-		// Handle tools toggle
-		let _toolsRemoved = false;
-		if (!toolsEnabled && requestBody.tools !== undefined) {
-			const toolCount = requestBody.tools.length;
-			delete requestBody.tools;
-			_toolsRemoved = true;
-			interceptLog.info(
-				`Removed ${toolCount} tools from request as per configuration`,
-			);
+		// Apply per-tool overrides
+		if (requestBody.tools && Array.isArray(requestBody.tools)) {
+			const originalToolCount = requestBody.tools.length;
+			const modifiedTools: Tool[] = [];
+
+			for (const tool of requestBody.tools) {
+				// Look up the tool's override configuration
+				const toolName = tool.name;
+				const override = toolOverrides?.[toolName];
+
+				if (!override) {
+					// No override exists - include tool as-is (default enabled)
+					modifiedTools.push(tool);
+				} else if (override.isEnabled === false) {
+					// Tool is disabled - exclude it from the array
+					interceptLog.info(`Disabled tool: ${toolName}`);
+				} else if (override.isEnabled === true) {
+					// Tool is enabled - check for description override
+					if (override.description && override.description.trim() !== "") {
+						// Create a copy of the tool with the overridden description
+						const modifiedTool = { ...tool, description: override.description };
+						modifiedTools.push(modifiedTool);
+						interceptLog.info(`Modified description for tool: ${toolName}`);
+					} else {
+						// No description override - include tool as-is
+						modifiedTools.push(tool);
+					}
+				}
+			}
+
+			// Replace the tools array with the modified version
+			requestBody.tools = modifiedTools;
+
+			const removedCount = originalToolCount - modifiedTools.length;
+			if (removedCount > 0) {
+				interceptLog.info(
+					`Removed ${removedCount} tools from request based on per-tool configuration`,
+				);
+			}
+			if (modifiedTools.length === 0) {
+				// If all tools were removed, delete the tools property entirely
+				delete requestBody.tools;
+				interceptLog.info(
+					"All tools disabled - removed tools array from request",
+				);
+			}
 		}
 
 		// Convert back to buffer if modifications were made
