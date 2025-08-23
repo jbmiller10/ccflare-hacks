@@ -24,7 +24,7 @@ export function createSystemPromptInterceptorHandler(
 				return jsonResponse({
 					isEnabled: false,
 					targetPrompt: lastSeenPrompt || DEFAULT_TARGET_PROMPT,
-					replacementPrompt: "",
+					replacementPrompt: lastSeenPrompt || "",
 					toolsEnabled: true,
 				});
 			}
