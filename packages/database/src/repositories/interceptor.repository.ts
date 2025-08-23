@@ -1,9 +1,14 @@
 import { BaseRepository } from "./base.repository";
 
+export interface ToolOverride {
+	isEnabled: boolean;
+	description?: string;
+}
+
 export interface InterceptorConfig {
 	targetPrompt: string;
 	replacementPrompt: string;
-	toolsEnabled: boolean;
+	tools: Record<string, ToolOverride>;
 }
 
 interface InterceptorRow {
