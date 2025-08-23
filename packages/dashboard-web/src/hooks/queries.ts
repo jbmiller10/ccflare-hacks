@@ -1,6 +1,5 @@
 import type { AgentUpdatePayload } from "@ccflare/types";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { SystemPromptConfig } from "../api";
 import { api } from "../api";
 import { REFRESH_INTERVALS } from "../constants";
 import { queryKeys } from "../lib/query-keys";
@@ -235,6 +234,18 @@ export const useSetSystemPromptOverride = () => {
 			promptTemplate: string;
 			toolsEnabled: boolean;
 		}) => api.setSystemPromptOverride(data),
+		onSuccess: () => {
+			queryClient.invalidateQueries({
+				queryKey: queryKeys.systemPromptOverride(),
+			});
+		},
+	});
+};
+
+export const useResetSystemPromptOverride = () => {
+	const queryClient = useQueryClient();
+	return useMutation({
+		mutationFn: () => api.resetSystemPromptOverride(),
 		onSuccess: () => {
 			queryClient.invalidateQueries({
 				queryKey: queryKeys.systemPromptOverride(),
