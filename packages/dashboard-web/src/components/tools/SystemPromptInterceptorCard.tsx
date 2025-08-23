@@ -326,7 +326,7 @@ export function SystemPromptInterceptorCard() {
 															className="min-h-[100px]"
 														/>
 														<p className="text-xs text-muted-foreground">
-															Leave empty to use the default description
+															Leave unedited to use default
 														</p>
 													</div>
 												)}
