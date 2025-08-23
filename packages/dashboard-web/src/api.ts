@@ -34,6 +34,19 @@ export interface AgentsResponse {
 	workspaces: AgentWorkspace[];
 }
 
+/**
+ * Configuration for the system prompt interceptor feature
+ * Controls how system prompts are intercepted and modified
+ */
+export interface SystemPromptConfig {
+	/** Whether the system prompt interceptor is enabled */
+	isEnabled: boolean;
+	/** Template for the system prompt with {{env_block}} placeholder for environment variables */
+	promptTemplate: string;
+	/** Whether tools are enabled in the intercepted system prompt */
+	toolsEnabled: boolean;
+}
+
 class API extends HttpClient {
 	constructor() {
 		super({

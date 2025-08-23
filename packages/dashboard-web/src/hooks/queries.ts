@@ -1,5 +1,6 @@
 import type { AgentUpdatePayload } from "@ccflare/types";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import type { SystemPromptConfig } from "../api";
 import { api } from "../api";
 import { REFRESH_INTERVALS } from "../constants";
 import { queryKeys } from "../lib/query-keys";
@@ -213,7 +214,11 @@ export const useCompactDb = () => {
 	});
 };
 
-// System prompt interceptor hooks
+/**
+ * Hook to fetch the current system prompt interceptor configuration
+ * Polls for changes at a slow interval and continues in background
+ */
+
 export const useSystemPromptOverride = () => {
 	return useQuery({
 		queryKey: queryKeys.systemPromptOverride(),
