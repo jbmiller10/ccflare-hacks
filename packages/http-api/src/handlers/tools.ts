@@ -73,6 +73,8 @@ export function createSystemPromptInterceptorHandler(
 						BadRequest("replacementPrompt must be a string"),
 					);
 				}
+				// Note: Empty strings are intentionally allowed for replacementPrompt
+				// This enables users to effectively disable prompt replacement
 
 				if (body.toolsEnabled === undefined || body.toolsEnabled === null) {
 					return errorResponse(BadRequest("toolsEnabled is required"));
