@@ -41,8 +41,10 @@ export interface AgentsResponse {
 export interface SystemPromptConfig {
 	/** Whether the system prompt interceptor is enabled */
 	isEnabled: boolean;
-	/** Template for the system prompt with {{env_block}} placeholder for environment variables */
-	promptTemplate: string;
+	/** The target prompt to look for and replace */
+	targetPrompt: string;
+	/** The replacement prompt with {{env_block}} placeholder for environment variables */
+	replacementPrompt: string;
 	/** Whether tools are enabled in the intercepted system prompt */
 	toolsEnabled: boolean;
 }
@@ -344,30 +346,35 @@ class API extends HttpClient {
 	// System prompt interceptor
 	async getSystemPromptOverride(): Promise<{
 		isEnabled: boolean;
-		promptTemplate: string;
+		targetPrompt: string;
+		replacementPrompt: string;
 		toolsEnabled: boolean;
 	}> {
 		return this.get<{
 			isEnabled: boolean;
-			promptTemplate: string;
+			targetPrompt: string;
+			replacementPrompt: string;
 			toolsEnabled: boolean;
 		}>("/api/tools/interceptors/system-prompt");
 	}
 
 	async setSystemPromptOverride(data: {
 		isEnabled: boolean;
-		promptTemplate: string;
+		targetPrompt: string;
+		replacementPrompt: string;
 		toolsEnabled: boolean;
 	}): Promise<{
 		success: boolean;
 		isEnabled: boolean;
-		promptTemplate: string;
+		targetPrompt: string;
+		replacementPrompt: string;
 		toolsEnabled: boolean;
 	}> {
 		return this.post<{
 			success: boolean;
 			isEnabled: boolean;
-			promptTemplate: string;
+			targetPrompt: string;
+			replacementPrompt: string;
 			toolsEnabled: boolean;
 		}>("/api/tools/interceptors/system-prompt", data);
 	}

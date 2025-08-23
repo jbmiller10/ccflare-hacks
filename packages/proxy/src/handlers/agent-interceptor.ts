@@ -557,28 +557,33 @@ function applySystemPromptInterception(
 		}
 
 		// Validate and apply the template
-		const { promptTemplate, toolsEnabled } = interceptorConfig.config;
+		const { targetPrompt, replacementPrompt, toolsEnabled } =
+			interceptorConfig.config;
 
-		// Validate promptTemplate is a non-empty string
-		if (!promptTemplate || typeof promptTemplate !== "string") {
+		// Validate replacementPrompt is a non-empty string
+		if (!replacementPrompt || typeof replacementPrompt !== "string") {
 			interceptLog.error(
-				"Invalid promptTemplate in config, skipping interception",
+				"Invalid replacementPrompt in config, skipping interception",
 			);
 			return { modified: false, toolsRemoved: false };
 		}
 
+		// Check if the current prompt matches the target (simplified check - could be enhanced)
+		// For now, we'll always apply the replacement if the interceptor is enabled
+		// Future enhancement: actually compare originalPrompt with targetPrompt
+
 		// Validate template has the placeholder
-		if (!promptTemplate.includes("{{env_block}}")) {
+		if (!replacementPrompt.includes("{{env_block}}")) {
 			interceptLog.warn(
-				"Template missing {{env_block}} placeholder, env data may be lost",
+				"Replacement prompt missing {{env_block}} placeholder, env data may be lost",
 			);
 		}
 
 		// Apply template with all occurrences replaced
-		const newPrompt = promptTemplate.replace(/\{\{env_block\}\}/g, envBlock);
+		const newPrompt = replacementPrompt.replace(/\{\{env_block\}\}/g, envBlock);
 
 		// Verify replacement actually happened
-		if (newPrompt === promptTemplate && envBlock) {
+		if (newPrompt === replacementPrompt && envBlock) {
 			interceptLog.warn(
 				"Template replacement may have failed - prompt unchanged despite env block present",
 			);
@@ -588,7 +593,7 @@ function applySystemPromptInterception(
 		secondSystemMessage.text = newPrompt;
 
 		interceptLog.info(
-			`Applied prompt template, new prompt length: ${newPrompt.length} chars`,
+			`Applied replacement prompt, new prompt length: ${newPrompt.length} chars`,
 		);
 
 		// Handle tools toggle

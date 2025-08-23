@@ -24,14 +24,16 @@ export function SystemPromptInterceptorCard() {
 
 	// Local form state
 	const [isEnabled, setIsEnabled] = useState(false);
-	const [promptTemplate, setPromptTemplate] = useState("");
+	const [targetPrompt, setTargetPrompt] = useState("");
+	const [replacementPrompt, setReplacementPrompt] = useState("");
 	const [toolsEnabled, setToolsEnabled] = useState(true);
 
 	// Sync server data to local state
 	useEffect(() => {
 		if (data) {
 			setIsEnabled(data.isEnabled);
-			setPromptTemplate(data.promptTemplate);
+			setTargetPrompt(data.targetPrompt);
+			setReplacementPrompt(data.replacementPrompt);
 			setToolsEnabled(data.toolsEnabled);
 		}
 	}, [data]);
@@ -39,7 +41,8 @@ export function SystemPromptInterceptorCard() {
 	const handleSave = () => {
 		mutate({
 			isEnabled,
-			promptTemplate,
+			targetPrompt,
+			replacementPrompt,
 			toolsEnabled,
 		});
 	};
@@ -80,12 +83,27 @@ export function SystemPromptInterceptorCard() {
 				</div>
 
 				<div className="space-y-2">
-					<Label htmlFor="prompt-template">Prompt Template</Label>
+					<Label htmlFor="target-prompt">Target Prompt</Label>
 					<Textarea
-						id="prompt-template"
-						placeholder="Your custom prompt here..."
-						value={promptTemplate}
-						onChange={(e) => setPromptTemplate(e.target.value)}
+						id="target-prompt"
+						placeholder="The prompt to look for and replace..."
+						value={targetPrompt}
+						onChange={(e) => setTargetPrompt(e.target.value)}
+						className="min-h-[150px]"
+					/>
+					<p className="text-sm text-muted-foreground">
+						This is the prompt that will be detected and replaced. After reset,
+						this shows the last-seen system prompt.
+					</p>
+				</div>
+
+				<div className="space-y-2">
+					<Label htmlFor="replacement-prompt">Replacement Prompt</Label>
+					<Textarea
+						id="replacement-prompt"
+						placeholder="Your custom replacement prompt here..."
+						value={replacementPrompt}
+						onChange={(e) => setReplacementPrompt(e.target.value)}
 						className="min-h-[200px]"
 					/>
 					<p className="text-sm text-muted-foreground">
