@@ -42,17 +42,23 @@ export function SystemPromptInterceptorCard() {
 		Record<string, ToolOverride>
 	>({});
 	const [showPromptUpdate, setShowPromptUpdate] = useState(false);
+	const [hasUserEditedTarget, setHasUserEditedTarget] = useState(false);
 
 	// Sync server data to local state
 	useEffect(() => {
 		if (data) {
 			setIsEnabled(data.isEnabled);
-			// Auto-populate target prompt if it's empty but we have a last-seen prompt
-			if (!data.config.targetPrompt && data.lastSeenPrompt) {
-				setTargetPrompt(data.lastSeenPrompt);
-			} else {
-				setTargetPrompt(data.config.targetPrompt);
+
+			// Only auto-populate if user hasn't manually edited the field
+			if (!hasUserEditedTarget) {
+				// Auto-populate target prompt if it's empty but we have a last-seen prompt
+				if (!data.config.targetPrompt && data.lastSeenPrompt) {
+					setTargetPrompt(data.lastSeenPrompt);
+				} else {
+					setTargetPrompt(data.config.targetPrompt);
+				}
 			}
+
 			setReplacementPrompt(data.config.replacementPrompt);
 
 			// Show update button if prompt has changed
@@ -69,7 +75,7 @@ export function SystemPromptInterceptorCard() {
 			}
 			setToolOverrides(overrides);
 		}
-	}, [data]);
+	}, [data, hasUserEditedTarget]);
 
 	const handleSave = () => {
 		// Build tools config with only modified overrides
@@ -147,7 +153,13 @@ export function SystemPromptInterceptorCard() {
 		if (data?.lastSeenPrompt) {
 			setTargetPrompt(data.lastSeenPrompt);
 			setShowPromptUpdate(false);
+			setHasUserEditedTarget(false); // Reset edit flag when updating to latest
 		}
+	};
+
+	const handleTargetPromptChange = (value: string) => {
+		setTargetPrompt(value);
+		setHasUserEditedTarget(true); // Mark as user-edited
 	};
 
 	if (isLoading) {
@@ -207,26 +219,20 @@ export function SystemPromptInterceptorCard() {
 					<Textarea
 						id="target-prompt"
 						placeholder={
-							data?.lastSeenPrompt
-								? "Loading last-seen prompt..."
-								: "No system prompt captured yet. Make a request to Claude to capture the prompt."
+							!data?.lastSeenPrompt
+								? "No system prompt captured yet. Make a request to Claude to capture the prompt."
+								: ""
 						}
 						value={targetPrompt}
-						onChange={(e) => setTargetPrompt(e.target.value)}
+						onChange={(e) => handleTargetPromptChange(e.target.value)}
 						className="min-h-[150px]"
 						readOnly
 					/>
-					<div className="text-sm text-muted-foreground">
-						{data?.lastSeenPrompt ? (
-							<>
-								This is the prompt that will be detected and replaced.
-								{!targetPrompt &&
-									" The field will auto-populate once a system prompt is captured."}
-							</>
-						) : (
-							"Make a request to Claude to capture the system prompt automatically."
-						)}
-					</div>
+					<p className="text-sm text-muted-foreground">
+						{data?.lastSeenPrompt
+							? "The prompt that will be detected and replaced."
+							: "Make a request to Claude to capture the system prompt."}
+					</p>
 				</div>
 
 				<div className="space-y-2">
@@ -389,7 +395,10 @@ export function SystemPromptInterceptorCard() {
 				</Button>
 				<Button
 					variant="outline"
-					onClick={() => resetMutate()}
+					onClick={() => {
+						resetMutate();
+						setHasUserEditedTarget(false); // Reset edit flag when resetting config
+					}}
 					title={
 						data?.lastSeenPrompt
 							? "Reset configuration and load the last-seen system prompt"
