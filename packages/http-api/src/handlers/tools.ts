@@ -14,6 +14,9 @@ export function createSystemPromptInterceptorHandler(
 		getSystemPromptConfig: (): Response => {
 			const config = dbOps.getInterceptorConfig("system_prompt");
 
+			// Always fetch the last-seen system prompt
+			const lastSeenPrompt = dbOps.getSystemKV("last_seen_system_prompt");
+
 			// Fetch the last-seen tools from KV store
 			const lastSeenToolsJson = dbOps.getSystemKV("last_seen_tools");
 			let availableTools: any[] = [];
@@ -28,8 +31,6 @@ export function createSystemPromptInterceptorHandler(
 
 			// Return default configuration if none exists
 			if (!config) {
-				// Try to get the last-seen system prompt as the default target
-				const lastSeenPrompt = dbOps.getSystemKV("last_seen_system_prompt");
 				const DEFAULT_TARGET_PROMPT =
 					"You are Claude Code, Anthropic's official CLI for Claude.";
 				const defaultTemplate =
@@ -43,11 +44,18 @@ export function createSystemPromptInterceptorHandler(
 						tools: {},
 					},
 					availableTools,
+					lastSeenPrompt,
+					hasPromptChanged: false,
 				});
 			}
 
 			// Ensure backward compatibility by converting old config format
 			const configTools = config.config.tools || {};
+
+			// Check if the saved target prompt differs from the last-seen prompt
+			const hasPromptChanged = !!(
+				lastSeenPrompt && lastSeenPrompt !== config.config.targetPrompt
+			);
 
 			return jsonResponse({
 				isEnabled: config.isEnabled,
@@ -57,6 +65,8 @@ export function createSystemPromptInterceptorHandler(
 					tools: configTools,
 				},
 				availableTools,
+				lastSeenPrompt,
+				hasPromptChanged,
 			});
 		},
 

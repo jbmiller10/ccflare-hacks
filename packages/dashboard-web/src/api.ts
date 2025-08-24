@@ -64,6 +64,10 @@ export interface SystemPromptConfig {
 	};
 	/** List of available tools from the last-seen main agent request */
 	availableTools: Tool[];
+	/** The last-seen system prompt captured from requests */
+	lastSeenPrompt?: string;
+	/** Whether the saved target prompt differs from the last-seen prompt */
+	hasPromptChanged?: boolean;
 }
 
 class API extends HttpClient {
