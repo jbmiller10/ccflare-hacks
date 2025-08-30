@@ -41,13 +41,28 @@ export function SystemPromptInterceptorCard() {
 	const [toolOverrides, setToolOverrides] = useState<
 		Record<string, ToolOverride>
 	>({});
+	const [showPromptUpdate, setShowPromptUpdate] = useState(false);
+	const [hasUserEditedTarget, setHasUserEditedTarget] = useState(false);
 
 	// Sync server data to local state
 	useEffect(() => {
 		if (data) {
 			setIsEnabled(data.isEnabled);
-			setTargetPrompt(data.config.targetPrompt);
+
+			// Only auto-populate if user hasn't manually edited the field
+			if (!hasUserEditedTarget) {
+				// Auto-populate target prompt if it's empty but we have a last-seen prompt
+				if (!data.config.targetPrompt && data.lastSeenPrompt) {
+					setTargetPrompt(data.lastSeenPrompt);
+				} else {
+					setTargetPrompt(data.config.targetPrompt);
+				}
+			}
+
 			setReplacementPrompt(data.config.replacementPrompt);
+
+			// Show update button if prompt has changed
+			setShowPromptUpdate(data.hasPromptChanged || false);
 
 			// Build tool overrides state from available tools and saved config
 			const overrides: Record<string, ToolOverride> = {};
@@ -60,7 +75,7 @@ export function SystemPromptInterceptorCard() {
 			}
 			setToolOverrides(overrides);
 		}
-	}, [data]);
+	}, [data, hasUserEditedTarget]);
 
 	const handleSave = () => {
 		// Build tools config with only modified overrides
@@ -134,6 +149,19 @@ export function SystemPromptInterceptorCard() {
 		}));
 	};
 
+	const handleUpdateToLatestPrompt = () => {
+		if (data?.lastSeenPrompt) {
+			setTargetPrompt(data.lastSeenPrompt);
+			setShowPromptUpdate(false);
+			setHasUserEditedTarget(false); // Reset edit flag when updating to latest
+		}
+	};
+
+	const handleTargetPromptChange = (value: string) => {
+		setTargetPrompt(value);
+		setHasUserEditedTarget(true); // Mark as user-edited
+	};
+
 	if (isLoading) {
 		return (
 			<Card>
@@ -170,18 +198,40 @@ export function SystemPromptInterceptorCard() {
 				</div>
 
 				<div className="space-y-2">
-					<Label htmlFor="target-prompt">Target Prompt</Label>
+					<div className="flex items-center justify-between">
+						<Label htmlFor="target-prompt">Target Prompt</Label>
+						{showPromptUpdate && data?.lastSeenPrompt && (
+							<div className="flex items-center gap-2">
+								<span className="text-xs text-orange-600 font-medium">
+									System prompt has changed
+								</span>
+								<Button
+									size="sm"
+									variant="outline"
+									onClick={handleUpdateToLatestPrompt}
+									className="h-7 text-xs"
+								>
+									Update to Latest
+								</Button>
+							</div>
+						)}
+					</div>
 					<Textarea
 						id="target-prompt"
-						placeholder="The prompt to look for and replace..."
+						placeholder={
+							!data?.lastSeenPrompt
+								? "No system prompt captured yet. Make a request to Claude to capture the prompt."
+								: ""
+						}
 						value={targetPrompt}
-						onChange={(e) => setTargetPrompt(e.target.value)}
+						onChange={(e) => handleTargetPromptChange(e.target.value)}
 						className="min-h-[150px]"
 						readOnly
 					/>
 					<p className="text-sm text-muted-foreground">
-						This is the prompt that will be detected and replaced. After reset,
-						this shows the last-seen system prompt.
+						{data?.lastSeenPrompt
+							? "The prompt that will be detected and replaced."
+							: "Make a request to Claude to capture the system prompt."}
 					</p>
 				</div>
 
@@ -343,7 +393,18 @@ export function SystemPromptInterceptorCard() {
 				<Button onClick={handleSave} disabled={isPending}>
 					{isPending ? "Saving..." : isSuccess ? "Saved!" : "Save"}
 				</Button>
-				<Button variant="outline" onClick={() => resetMutate()}>
+				<Button
+					variant="outline"
+					onClick={() => {
+						resetMutate();
+						setHasUserEditedTarget(false); // Reset edit flag when resetting config
+					}}
+					title={
+						data?.lastSeenPrompt
+							? "Reset configuration and load the last-seen system prompt"
+							: "Reset configuration to defaults"
+					}
+				>
 					Reset to Default
 				</Button>
 			</CardFooter>
